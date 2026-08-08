@@ -6,6 +6,7 @@ import {
   CompanyAth,
   CustomAthRow,
   AthMetric,
+  QuarterFilter,
   PAGE_SIZE,
 } from "@/lib/types";
 
@@ -147,9 +148,30 @@ export async function getCompanyAth(
   return { rows: (data ?? []) as CompanyAth[], count: count ?? 0 };
 }
 
+const QUARTER_NUMBERS: Record<string, number> = { q1: 1, q2: 2, q3: 3, q4: 4 };
+
+// "Latest" deliberately ignores the fiscal-year filter — it means "the most
+// recent quarter in which anyone actually set an all-time record for this
+// metric," which is a global concept per metric, not scoped to a year.
+async function getLatestPeakDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  metric: AthMetric
+) {
+  const { data, error } = await supabase
+    .from("company_metric_peaks")
+    .select("peak_date")
+    .eq("metric", metric)
+    .order("peak_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.peak_date as string | undefined;
+}
+
 export async function getCustomAth(params: {
   metric: AthMetric;
   fiscalYear: number;
+  quarter?: QuarterFilter;
   q?: string;
   page: number;
 }) {
@@ -157,13 +179,23 @@ export async function getCustomAth(params: {
   const from = (params.page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = supabase
-    .from("company_metric_peaks")
-    .select("*", { count: "exact" })
-    .eq("metric", params.metric)
-    .eq("peak_fiscal_year", params.fiscalYear)
-    .order("peak_value", { ascending: false })
-    .range(from, to);
+  const latestDate =
+    params.quarter === "latest" ? await getLatestPeakDate(supabase, params.metric) : undefined;
+
+  let query = supabase.from("company_metric_peaks").select("*", { count: "exact" }).eq(
+    "metric",
+    params.metric
+  );
+
+  if (params.quarter === "latest") {
+    if (latestDate) query = query.eq("peak_date", latestDate);
+  } else {
+    query = query.eq("peak_fiscal_year", params.fiscalYear);
+    const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
+    if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
+  }
+
+  query = query.order("peak_value", { ascending: false }).range(from, to);
 
   if (params.q) {
     const term = params.q.replace(/[%_]/g, "");
@@ -174,19 +206,36 @@ export async function getCustomAth(params: {
 
   const { data, count, error } = await query;
   if (error) throw error;
-  return { rows: (data ?? []) as CustomAthRow[], count: count ?? 0 };
+  return {
+    rows: (data ?? []) as CustomAthRow[],
+    count: count ?? 0,
+    resolvedLatestDate: latestDate,
+  };
 }
 
-export async function getCustomAthCounts(fiscalYear: number): Promise<Record<AthMetric, number>> {
+export async function getCustomAthCounts(
+  fiscalYear: number,
+  quarter?: QuarterFilter
+): Promise<Record<AthMetric, number>> {
   const supabase = await createClient();
   const metrics: AthMetric[] = ["sales", "pat", "ebidta"];
   const counts = await Promise.all(
     metrics.map(async (metric) => {
-      const { count, error } = await supabase
+      let query = supabase
         .from("company_metric_peaks")
         .select("*", { count: "exact", head: true })
-        .eq("metric", metric)
-        .eq("peak_fiscal_year", fiscalYear);
+        .eq("metric", metric);
+
+      if (quarter === "latest") {
+        const latestDate = await getLatestPeakDate(supabase, metric);
+        query = latestDate ? query.eq("peak_date", latestDate) : query.eq("peak_date", "");
+      } else {
+        query = query.eq("peak_fiscal_year", fiscalYear);
+        const quarterNumber = quarter ? QUARTER_NUMBERS[quarter] : undefined;
+        if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
+      }
+
+      const { count, error } = await query;
       if (error) throw error;
       return count ?? 0;
     })

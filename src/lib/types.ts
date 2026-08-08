@@ -93,8 +93,20 @@ export type CustomAthRow = {
   peak_value: number;
   peak_date: string;
   peak_fiscal_year: number;
+  peak_fiscal_quarter: number;
   peak_basis: string | null;
 };
+
+export type QuarterFilter = "all" | "q1" | "q2" | "q3" | "q4" | "latest";
+
+export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [
+  { value: "all", label: "All quarters" },
+  { value: "q1", label: "Q1 (Apr–Jun)" },
+  { value: "q2", label: "Q2 (Jul–Sep)" },
+  { value: "q3", label: "Q3 (Oct–Dec)" },
+  { value: "q4", label: "Q4 (Jan–Mar)" },
+  { value: "latest", label: "Latest quarter" },
+];
 
 export type Tab = "companies" | "sme" | "main" | "ath";
 

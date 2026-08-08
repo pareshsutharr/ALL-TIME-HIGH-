@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { AthMetric, ATH_METRICS } from "@/lib/types";
+import { AthMetric, ATH_METRICS, QuarterFilter } from "@/lib/types";
 
-function buildHref(metric: AthMetric, year: number, q?: string) {
+function buildHref(metric: AthMetric, year: number, quarter: QuarterFilter, q?: string) {
   const params = new URLSearchParams();
   params.set("metric", metric);
   params.set("year", String(year));
+  if (quarter !== "all") params.set("quarter", quarter);
   if (q) params.set("q", q);
   return `/custom-ath?${params.toString()}`;
 }
@@ -12,11 +13,13 @@ function buildHref(metric: AthMetric, year: number, q?: string) {
 export function MetricTabs({
   active,
   year,
+  quarter,
   q,
   counts,
 }: {
   active: AthMetric;
   year: number;
+  quarter: QuarterFilter;
   q?: string;
   counts: Record<AthMetric, number>;
 }) {
@@ -32,7 +35,7 @@ export function MetricTabs({
       {ATH_METRICS.map((m) => (
         <Link
           key={m.value}
-          href={buildHref(m.value, year, q)}
+          href={buildHref(m.value, year, quarter, q)}
           className={tabClass(m.value)}
         >
           {m.label} ({counts[m.value].toLocaleString("en-IN")})

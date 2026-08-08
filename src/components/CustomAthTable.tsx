@@ -1,17 +1,18 @@
-import { AthMetric, CustomAthRow } from "@/lib/types";
-import { formatDate, formatFiscalQuarter, formatNumber } from "@/lib/format";
+import { AthMetric, CustomAthRow, ATH_METRICS } from "@/lib/types";
+import { formatDate, formatFiscalQuarter, formatNumber, formatPercent } from "@/lib/format";
 
-const METRIC_LABELS: Record<AthMetric, string> = {
-  sales: "Sales",
-  pat: "PAT",
-  ebidta: "EBIDTA",
-};
+function metricInfo(metric: AthMetric) {
+  return ATH_METRICS.find((m) => m.value === metric)!;
+}
 
 export function CustomAthTable({ rows, metric }: { rows: CustomAthRow[]; metric: AthMetric }) {
+  const info = metricInfo(metric);
+  const formatPeak = info.isPercent ? formatPercent : formatNumber;
+
   if (rows.length === 0) {
     return (
       <p className="text-sm text-black/60 dark:text-white/60 py-10 text-center">
-        No companies set an all-time {METRIC_LABELS[metric]} record in this fiscal year.
+        No companies set an all-time {info.label} record in this period.
       </p>
     );
   }
@@ -22,7 +23,10 @@ export function CustomAthTable({ rows, metric }: { rows: CustomAthRow[]; metric:
         <thead>
           <tr className="bg-black/5 dark:bg-white/10 text-left">
             <th className="px-3 py-2 font-medium">Company</th>
-            <th className="px-3 py-2 font-medium">All-Time High {METRIC_LABELS[metric]} (₹Cr)</th>
+            <th className="px-3 py-2 font-medium">
+              All-Time High {info.label}
+              {info.isPercent ? "" : " (₹Cr)"}
+            </th>
             <th className="px-3 py-2 font-medium">Date</th>
             <th className="px-3 py-2 font-medium">Quarter</th>
             <th className="px-3 py-2 font-medium">Basis</th>
@@ -43,7 +47,7 @@ export function CustomAthTable({ rows, metric }: { rows: CustomAthRow[]; metric:
                 ) : null}
               </td>
               <td className="px-3 py-2 whitespace-nowrap font-medium">
-                {formatNumber(r.peak_value)}
+                {formatPeak(r.peak_value)}
               </td>
               <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
                 {formatDate(r.peak_date)}

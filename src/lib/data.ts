@@ -6,6 +6,7 @@ import {
   CompanyAth,
   CustomAthRow,
   AthMetric,
+  ATH_METRICS,
   QuarterFilter,
   PAGE_SIZE,
 } from "@/lib/types";
@@ -218,7 +219,7 @@ export async function getCustomAthCounts(
   quarter?: QuarterFilter
 ): Promise<Record<AthMetric, number>> {
   const supabase = await createClient();
-  const metrics: AthMetric[] = ["sales", "pat", "ebidta"];
+  const metrics = ATH_METRICS.map((m) => m.value);
   const counts = await Promise.all(
     metrics.map(async (metric) => {
       let query = supabase
@@ -240,7 +241,7 @@ export async function getCustomAthCounts(
       return count ?? 0;
     })
   );
-  return { sales: counts[0], pat: counts[1], ebidta: counts[2] };
+  return Object.fromEntries(metrics.map((m, i) => [m, counts[i]])) as Record<AthMetric, number>;
 }
 
 export async function getTableCount(

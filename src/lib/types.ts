@@ -74,14 +74,22 @@ export type CompanyAth = {
   ebidta_peak: number | null;
   ebidta_peak_date: string | null;
   ebidta_peak_basis: string | null;
+  gross_sales_margin_peak: number | null;
+  gross_sales_margin_peak_date: string | null;
+  gross_sales_margin_peak_basis: string | null;
+  ebidta_margin_peak: number | null;
+  ebidta_margin_peak_date: string | null;
+  ebidta_margin_peak_basis: string | null;
 };
 
-export type AthMetric = "sales" | "pat" | "ebidta";
+export type AthMetric = "sales" | "pat" | "ebidta" | "gross_sales_margin" | "ebidta_margin";
 
-export const ATH_METRICS: { value: AthMetric; label: string }[] = [
+export const ATH_METRICS: { value: AthMetric; label: string; isPercent?: boolean }[] = [
   { value: "sales", label: "Sales" },
   { value: "pat", label: "PAT" },
   { value: "ebidta", label: "EBIDTA" },
+  { value: "gross_sales_margin", label: "Gross Sales Margin" },
+  { value: "ebidta_margin", label: "EBIDTA Margin", isPercent: true },
 ];
 
 export type CustomAthRow = {

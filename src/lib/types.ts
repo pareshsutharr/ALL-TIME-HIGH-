@@ -24,6 +24,7 @@ export type SmeCompany = {
   company_name: string;
   isin: string | null;
   industry: string | null;
+  ipo_list_date: string | null;
 };
 
 export type MainData = {
@@ -49,6 +50,7 @@ export type MainData = {
   shp_ffi_banks_pct: number | null;
   shp_foreign_bodies_dr_pct: number | null;
   qtr_basis: string | null;
+  ipo_list_date: string | null;
 };
 
 export type CompanyAth = {
@@ -56,6 +58,7 @@ export type CompanyAth = {
   company_name: string;
   isin: string | null;
   nse_symbol: string | null;
+  ipo_list_date: string | null;
   ath_price: number;
   ath_date: string;
   qtr_date_end: string | null;
@@ -80,9 +83,22 @@ export type CompanyAth = {
   ebidta_margin_peak: number | null;
   ebidta_margin_peak_date: string | null;
   ebidta_margin_peak_basis: string | null;
+  fii_peak: number | null;
+  fii_peak_date: string | null;
+  fii_peak_basis: string | null;
+  dii_peak: number | null;
+  dii_peak_date: string | null;
+  dii_peak_basis: string | null;
 };
 
-export type AthMetric = "sales" | "pat" | "ebidta" | "gross_sales_margin" | "ebidta_margin";
+export type AthMetric =
+  | "sales"
+  | "pat"
+  | "ebidta"
+  | "gross_sales_margin"
+  | "ebidta_margin"
+  | "fii"
+  | "dii";
 
 export const ATH_METRICS: { value: AthMetric; label: string; isPercent?: boolean }[] = [
   { value: "sales", label: "Sales" },
@@ -90,6 +106,8 @@ export const ATH_METRICS: { value: AthMetric; label: string; isPercent?: boolean
   { value: "ebidta", label: "EBIDTA" },
   { value: "gross_sales_margin", label: "Gross Sales Margin" },
   { value: "ebidta_margin", label: "EBIDTA Margin", isPercent: true },
+  { value: "fii", label: "FII", isPercent: true },
+  { value: "dii", label: "DII", isPercent: true },
 ];
 
 export type CustomAthRow = {
@@ -97,6 +115,7 @@ export type CustomAthRow = {
   company_name: string;
   isin: string | null;
   nse_symbol: string | null;
+  ipo_list_date: string | null;
   metric: AthMetric;
   peak_value: number;
   peak_date: string;

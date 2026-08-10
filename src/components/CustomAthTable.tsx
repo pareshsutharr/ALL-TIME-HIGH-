@@ -19,10 +19,11 @@ export function CustomAthTable({ rows, metric }: { rows: CustomAthRow[]; metric:
 
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-      <table className="w-full text-sm border-collapse min-w-[700px]">
+      <table className="w-full text-sm border-collapse min-w-[800px]">
         <thead>
           <tr className="bg-black/5 dark:bg-white/10 text-left">
             <th className="px-3 py-2 font-medium">Company</th>
+            <th className="px-3 py-2 font-medium">IPO Date</th>
             <th className="px-3 py-2 font-medium">
               All-Time High {info.label}
               {info.isPercent ? "" : " (₹Cr)"}
@@ -45,6 +46,9 @@ export function CustomAthTable({ rows, metric }: { rows: CustomAthRow[]; metric:
                     {r.nse_symbol}
                   </span>
                 ) : null}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
+                {formatDate(r.ipo_list_date)}
               </td>
               <td className="px-3 py-2 whitespace-nowrap font-medium">
                 {formatPeak(r.peak_value)}

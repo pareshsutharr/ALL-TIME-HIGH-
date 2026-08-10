@@ -25,6 +25,10 @@ function peakFields(row: CompanyAth, metric: AthMetric) {
         date: row.ebidta_margin_peak_date,
         basis: row.ebidta_margin_peak_basis,
       };
+    case "fii":
+      return { value: row.fii_peak, date: row.fii_peak_date, basis: row.fii_peak_basis };
+    case "dii":
+      return { value: row.dii_peak, date: row.dii_peak_date, basis: row.dii_peak_basis };
   }
 }
 
@@ -42,10 +46,11 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
 
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-      <table className="w-full text-sm border-collapse min-w-[1300px]">
+      <table className="w-full text-sm border-collapse min-w-[1400px]">
         <thead>
           <tr className="bg-black/5 dark:bg-white/10 text-left">
             <th className="px-3 py-2 font-medium">Company</th>
+            <th className="px-3 py-2 font-medium">IPO Date</th>
             <th className="px-3 py-2 font-medium">All-Time High</th>
             <th className="px-3 py-2 font-medium">Date</th>
             <th className="px-3 py-2 font-medium">Quarter</th>
@@ -81,6 +86,9 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
                       {c.nse_symbol}
                     </span>
                   ) : null}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
+                  {formatDate(c.ipo_list_date)}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap font-medium">
                   {formatPrice(c.ath_price)}

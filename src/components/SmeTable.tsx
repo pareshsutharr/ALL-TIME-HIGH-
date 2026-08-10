@@ -1,4 +1,5 @@
 import { SmeCompany } from "@/lib/types";
+import { formatDate } from "@/lib/format";
 
 export function SmeTable({ rows }: { rows: SmeCompany[] }) {
   if (rows.length === 0) {
@@ -11,12 +12,13 @@ export function SmeTable({ rows }: { rows: SmeCompany[] }) {
 
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-      <table className="w-full text-sm border-collapse min-w-[600px]">
+      <table className="w-full text-sm border-collapse min-w-[750px]">
         <thead>
           <tr className="bg-black/5 dark:bg-white/10 text-left">
             <th className="px-3 py-2 font-medium">Company</th>
             <th className="px-3 py-2 font-medium">Industry</th>
             <th className="px-3 py-2 font-medium">ISIN</th>
+            <th className="px-3 py-2 font-medium">IPO Date</th>
             <th className="px-3 py-2 font-medium">Accord Code</th>
           </tr>
         </thead>
@@ -32,6 +34,9 @@ export function SmeTable({ rows }: { rows: SmeCompany[] }) {
               </td>
               <td className="px-3 py-2 font-mono text-xs text-black/70 dark:text-white/70">
                 {c.isin ?? "—"}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
+                {formatDate(c.ipo_list_date)}
               </td>
               <td className="px-3 py-2 text-black/70 dark:text-white/70">
                 {c.accord_code}

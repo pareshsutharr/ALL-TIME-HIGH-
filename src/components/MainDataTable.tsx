@@ -12,10 +12,11 @@ export function MainDataTable({ rows }: { rows: MainData[] }) {
 
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-      <table className="w-full text-sm border-collapse min-w-[1100px]">
+      <table className="w-full text-sm border-collapse min-w-[1200px]">
         <thead>
           <tr className="bg-black/5 dark:bg-white/10 text-left">
             <th className="px-3 py-2 font-medium">Company</th>
+            <th className="px-3 py-2 font-medium">IPO Date</th>
             <th className="px-3 py-2 font-medium">Year / Basis</th>
             <th className="px-3 py-2 font-medium">Qtr End</th>
             <th className="px-3 py-2 font-medium">Net Sales (₹Cr)</th>
@@ -40,6 +41,9 @@ export function MainDataTable({ rows }: { rows: MainData[] }) {
                     {r.industry}
                   </span>
                 ) : null}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
+                {formatDate(r.ipo_list_date)}
               </td>
               <td className="px-3 py-2 whitespace-nowrap text-black/70 dark:text-white/70">
                 {r.source_year}

@@ -53,7 +53,7 @@ export async function getSmeCompanies(params: ListParams) {
   const to = from + PAGE_SIZE - 1;
 
   let query = supabase
-    .from("sme_companies")
+    .from("sme_companies_enriched")
     .select("*", { count: "exact" })
     .order("company_name", { ascending: true })
     .range(from, to);
@@ -100,7 +100,7 @@ export async function getMainData(params: MainDataListParams) {
 
   const to = from + PAGE_SIZE - 1;
   let query = supabase
-    .from("main_data")
+    .from("main_data_enriched")
     .select("*", { count: "exact" })
     .order("company_name", { ascending: true })
     .order("qtr_date_end", { ascending: false, nullsFirst: false })

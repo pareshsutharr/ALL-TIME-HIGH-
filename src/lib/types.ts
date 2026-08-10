@@ -25,6 +25,8 @@ export type SmeCompany = {
   isin: string | null;
   industry: string | null;
   ipo_list_date: string | null;
+  nse_symbol: string | null;
+  bse_code: string | null;
 };
 
 export type MainData = {
@@ -51,13 +53,17 @@ export type MainData = {
   shp_foreign_bodies_dr_pct: number | null;
   qtr_basis: string | null;
   ipo_list_date: string | null;
+  nse_symbol: string | null;
+  bse_code: string | null;
 };
 
 export type CompanyAth = {
   id: number;
+  accord_code: number;
   company_name: string;
   isin: string | null;
   nse_symbol: string | null;
+  bse_code: string | null;
   ipo_list_date: string | null;
   ath_price: number;
   ath_date: string;
@@ -89,6 +95,12 @@ export type CompanyAth = {
   dii_peak: number | null;
   dii_peak_date: string | null;
   dii_peak_basis: string | null;
+  nse_52w_high_peak: number | null;
+  nse_52w_high_peak_date: string | null;
+  nse_52w_high_peak_basis: string | null;
+  bse_52w_high_peak: number | null;
+  bse_52w_high_peak_date: string | null;
+  bse_52w_high_peak_basis: string | null;
 };
 
 export type AthMetric =
@@ -98,23 +110,30 @@ export type AthMetric =
   | "gross_sales_margin"
   | "ebidta_margin"
   | "fii"
-  | "dii";
+  | "dii"
+  | "nse_52w_high"
+  | "bse_52w_high";
 
-export const ATH_METRICS: { value: AthMetric; label: string; isPercent?: boolean }[] = [
-  { value: "sales", label: "Sales" },
-  { value: "pat", label: "PAT" },
-  { value: "ebidta", label: "EBIDTA" },
-  { value: "gross_sales_margin", label: "Gross Sales Margin" },
-  { value: "ebidta_margin", label: "EBIDTA Margin", isPercent: true },
-  { value: "fii", label: "FII", isPercent: true },
-  { value: "dii", label: "DII", isPercent: true },
+// "cr" = ₹ crore financials, "percent" = a % figure, "price" = a per-share ₹ price.
+export const ATH_METRICS: { value: AthMetric; label: string; unit: "cr" | "percent" | "price" }[] = [
+  { value: "sales", label: "Sales", unit: "cr" },
+  { value: "pat", label: "PAT", unit: "cr" },
+  { value: "ebidta", label: "EBIDTA", unit: "cr" },
+  { value: "gross_sales_margin", label: "Gross Sales Margin", unit: "cr" },
+  { value: "ebidta_margin", label: "EBIDTA Margin", unit: "percent" },
+  { value: "fii", label: "FII", unit: "percent" },
+  { value: "dii", label: "DII", unit: "percent" },
+  { value: "nse_52w_high", label: "NSE 52W High", unit: "price" },
+  { value: "bse_52w_high", label: "BSE 52W High", unit: "price" },
 ];
 
 export type CustomAthRow = {
   id: number;
+  accord_code: number;
   company_name: string;
   isin: string | null;
   nse_symbol: string | null;
+  bse_code: string | null;
   ipo_list_date: string | null;
   metric: AthMetric;
   peak_value: number;
@@ -137,9 +156,11 @@ export type MultiMetricPeak = {
 };
 
 export type MultiMetricRow = {
+  accord_code: number;
   company_name: string;
   isin: string | null;
   nse_symbol: string | null;
+  bse_code: string | null;
   ipo_list_date: string | null;
   peaks: Partial<Record<AthMetric, MultiMetricPeak>>;
 };
@@ -158,6 +179,10 @@ export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [
 export type Tab = "companies" | "sme" | "main" | "ath";
 
 export const PAGE_SIZE = 25;
+
+// Cap on rows fetched for an Excel export — protects the biggest table
+// (main_data, ~1.38M rows) from an unbounded query/response.
+export const EXPORT_LIMIT = 20000;
 
 export const MIN_YEAR = 2001;
 export const MAX_YEAR = 2026;

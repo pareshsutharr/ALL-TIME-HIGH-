@@ -1,35 +1,16 @@
 import { AthMetric, CompanyAth, ATH_METRICS } from "@/lib/types";
 import { formatDate, formatFiscalQuarter, formatNumber, formatPercent, formatPrice } from "@/lib/format";
+import { athPeakFor } from "@/lib/athPeaks";
+import { CompanyLink } from "@/components/CompanyLink";
+
+function formatByUnit(unit: "cr" | "percent" | "price") {
+  if (unit === "percent") return formatPercent;
+  if (unit === "price") return formatPrice;
+  return formatNumber;
+}
 
 function metricInfo(metric: AthMetric) {
   return ATH_METRICS.find((m) => m.value === metric)!;
-}
-
-function peakFields(row: CompanyAth, metric: AthMetric) {
-  switch (metric) {
-    case "sales":
-      return { value: row.sales_peak, date: row.sales_peak_date, basis: row.sales_peak_basis };
-    case "pat":
-      return { value: row.pat_peak, date: row.pat_peak_date, basis: row.pat_peak_basis };
-    case "ebidta":
-      return { value: row.ebidta_peak, date: row.ebidta_peak_date, basis: row.ebidta_peak_basis };
-    case "gross_sales_margin":
-      return {
-        value: row.gross_sales_margin_peak,
-        date: row.gross_sales_margin_peak_date,
-        basis: row.gross_sales_margin_peak_basis,
-      };
-    case "ebidta_margin":
-      return {
-        value: row.ebidta_margin_peak,
-        date: row.ebidta_margin_peak_date,
-        basis: row.ebidta_margin_peak_basis,
-      };
-    case "fii":
-      return { value: row.fii_peak, date: row.fii_peak_date, basis: row.fii_peak_basis };
-    case "dii":
-      return { value: row.dii_peak, date: row.dii_peak_date, basis: row.dii_peak_basis };
-  }
 }
 
 export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMetric }) {
@@ -42,7 +23,7 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
   }
 
   const info = metric ? metricInfo(metric) : null;
-  const formatPeak = info?.isPercent ? formatPercent : formatNumber;
+  const formatPeak = formatByUnit(info?.unit ?? "cr");
 
   return (
     <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
@@ -58,7 +39,7 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
               <>
                 <th className="px-3 py-2 font-medium">
                   All-Time High {info.label}
-                  {info.isPercent ? "" : " (₹Cr)"}
+                  {info.unit === "cr" ? " (₹Cr)" : ""}
                 </th>
                 <th className="px-3 py-2 font-medium">{info.label} Quarter</th>
               </>
@@ -73,14 +54,14 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
         </thead>
         <tbody>
           {rows.map((c) => {
-            const peak = metric ? peakFields(c, metric) : null;
+            const peak = metric ? athPeakFor(c, metric) : null;
             return (
               <tr
                 key={c.id}
                 className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
               >
                 <td className="px-3 py-2 font-medium">
-                  {c.company_name}
+                  <CompanyLink name={c.company_name} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
                   {c.nse_symbol ? (
                     <span className="block text-xs font-normal text-black/50 dark:text-white/50">
                       {c.nse_symbol}

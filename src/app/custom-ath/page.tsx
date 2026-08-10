@@ -14,6 +14,7 @@ import { MetricTabs } from "@/components/MetricTabs";
 import { CustomAthControls } from "@/components/CustomAthControls";
 import { CustomAthTable } from "@/components/CustomAthTable";
 import { Pagination } from "@/components/Pagination";
+import { DownloadExcelButton } from "@/components/DownloadExcelButton";
 
 type SearchParams = {
   metric?: string;
@@ -72,6 +73,17 @@ export default async function CustomAthPage({
     return `/custom-ath?${p.toString()}`;
   }
 
+  function buildExportHref() {
+    const p = new URLSearchParams();
+    p.set("type", "custom-ath");
+    p.set("metric", metrics.join(","));
+    if (mode !== "or") p.set("mode", mode);
+    p.set("year", String(fiscalYear));
+    if (quarter !== "all") p.set("quarter", quarter);
+    if (q) p.set("q", q);
+    return `/api/export?${p.toString()}`;
+  }
+
   const metricLabels = metrics.map((m) => ATH_METRICS.find((x) => x.value === m)!.label);
   const metricLabel =
     metricLabels.length === 1 ? metricLabels[0] : metricLabels.join(mode === "and" ? " AND " : " OR ");
@@ -116,10 +128,13 @@ export default async function CustomAthPage({
 
       <CustomAthControls />
 
-      <p className="text-sm text-black/60 dark:text-white/60">
-        Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} companies with an
-        all-time high {metricLabel} record in {periodLabel}
-      </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} companies with an
+          all-time high {metricLabel} record in {periodLabel}
+        </p>
+        <DownloadExcelButton href={buildExportHref()} />
+      </div>
 
       <CustomAthTable rows={result.rows} metrics={metrics} />
 

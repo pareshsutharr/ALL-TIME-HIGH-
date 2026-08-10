@@ -1,5 +1,6 @@
 import { Company } from "@/lib/types";
 import { formatDate, formatPrice } from "@/lib/format";
+import { CompanyLink } from "@/components/CompanyLink";
 
 export function CompaniesTable({ rows }: { rows: Company[] }) {
   if (rows.length === 0) {
@@ -30,7 +31,9 @@ export function CompaniesTable({ rows }: { rows: Company[] }) {
               key={c.id}
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
-              <td className="px-3 py-2 font-medium">{c.company_name}</td>
+              <td className="px-3 py-2 font-medium">
+                <CompanyLink name={c.company_name} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
+              </td>
               <td className="px-3 py-2 text-black/70 dark:text-white/70">
                 {c.industry ?? "—"}
                 {c.sector ? (

@@ -15,6 +15,7 @@ import { CompaniesTable } from "@/components/CompaniesTable";
 import { SmeTable } from "@/components/SmeTable";
 import { MainDataTable } from "@/components/MainDataTable";
 import { AthTable } from "@/components/AthTable";
+import { DownloadExcelButton } from "@/components/DownloadExcelButton";
 
 type SearchParams = {
   tab?: string;
@@ -94,6 +95,16 @@ export default async function Home({
     return `/?${p.toString()}`;
   }
 
+  function buildExportHref() {
+    const p = new URLSearchParams();
+    p.set("type", tab);
+    if (q) p.set("q", q);
+    if (industry) p.set("industry", industry);
+    if (year) p.set("year", String(year));
+    if (metric) p.set("metric", metric);
+    return `/api/export?${p.toString()}`;
+  }
+
   const tabLabel =
     tab === "sme"
       ? "SME companies"
@@ -136,9 +147,12 @@ export default async function Home({
         metrics={tab === "ath"}
       />
 
-      <p className="text-sm text-black/60 dark:text-white/60">
-        Showing {rowsShown} of {rowCount.toLocaleString("en-IN")} {tabLabel}
-      </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Showing {rowsShown} of {rowCount.toLocaleString("en-IN")} {tabLabel}
+        </p>
+        <DownloadExcelButton href={buildExportHref()} />
+      </div>
 
       {tab === "sme" ? (
         <SmeTable rows={smeResult!.rows} />

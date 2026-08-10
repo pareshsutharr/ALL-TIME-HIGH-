@@ -1,9 +1,22 @@
 import { Fragment } from "react";
 import { AthMetric, MultiMetricRow, ATH_METRICS } from "@/lib/types";
-import { formatDate, formatFiscalQuarter, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatDate,
+  formatFiscalQuarter,
+  formatNumber,
+  formatPercent,
+  formatPrice,
+} from "@/lib/format";
+import { CompanyLink } from "@/components/CompanyLink";
 
 function metricInfo(metric: AthMetric) {
   return ATH_METRICS.find((m) => m.value === metric)!;
+}
+
+function formatByUnit(unit: "cr" | "percent" | "price") {
+  if (unit === "percent") return formatPercent;
+  if (unit === "price") return formatPrice;
+  return formatNumber;
 }
 
 export function CustomAthTable({
@@ -34,7 +47,7 @@ export function CustomAthTable({
                 <Fragment key={metric}>
                   <th className="px-3 py-2 font-medium">
                     All-Time High {info.label}
-                    {info.isPercent ? "" : " (₹Cr)"}
+                    {info.unit === "cr" ? " (₹Cr)" : ""}
                   </th>
                   <th className="px-3 py-2 font-medium">{info.label} Quarter</th>
                 </Fragment>
@@ -49,7 +62,7 @@ export function CustomAthTable({
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
               <td className="px-3 py-2 font-medium">
-                {r.company_name}
+                <CompanyLink name={r.company_name} nseSymbol={r.nse_symbol} bseCode={r.bse_code} />
                 {r.nse_symbol ? (
                   <span className="block text-xs font-normal text-black/50 dark:text-white/50">
                     {r.nse_symbol}
@@ -61,7 +74,7 @@ export function CustomAthTable({
               </td>
               {metrics.map((metric) => {
                 const info = metricInfo(metric);
-                const formatPeak = info.isPercent ? formatPercent : formatNumber;
+                const formatPeak = formatByUnit(info.unit);
                 const peak = r.peaks[metric];
                 return (
                   <Fragment key={metric}>

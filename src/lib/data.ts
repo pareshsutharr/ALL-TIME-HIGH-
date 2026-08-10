@@ -9,6 +9,7 @@ import {
   ATH_METRICS,
   QuarterFilter,
   PAGE_SIZE,
+  EXPORT_LIMIT,
   MatchMode,
   MultiMetricRow,
 } from "@/lib/types";
@@ -22,6 +23,30 @@ type ListParams = {
 type MainDataListParams = ListParams & {
   year?: number;
 };
+
+// Supabase's PostgREST caps every request at 1000 rows server-side
+// regardless of the `.range()` requested — a single `.range(0, N-1)` call
+// silently truncates to 1000 rows for any N > 1000. Anywhere we need more
+// than one page's worth of unpaginated data (exports, and the Custom ATH
+// multi-metric query which groups in JS before paginating), page through
+// in 1000-row chunks instead.
+const SUPABASE_MAX_ROWS = 1000;
+
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => Promise<T[]>,
+  limit: number
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+  while (offset < limit) {
+    const to = Math.min(offset + SUPABASE_MAX_ROWS, limit) - 1;
+    const page = await fetchPage(offset, to);
+    rows.push(...page);
+    if (page.length < to - offset + 1) break;
+    offset += SUPABASE_MAX_ROWS;
+  }
+  return rows;
+}
 
 export async function getCompanies(params: ListParams) {
   const supabase = await createClient();
@@ -49,6 +74,31 @@ export async function getCompanies(params: ListParams) {
   return { rows: (data ?? []) as Company[], count: count ?? 0 };
 }
 
+export async function getCompaniesExport(params: Omit<ListParams, "page">) {
+  const supabase = await createClient();
+  return fetchAllRows<Company>(async (from, to) => {
+    let query = supabase
+      .from("companies")
+      .select("*")
+      .order("company_name", { ascending: true })
+      .range(from, to);
+
+    if (params.q) {
+      const term = params.q.replace(/[%_]/g, "");
+      query = query.or(
+        `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%,bse_code.ilike.%${term}%`
+      );
+    }
+    if (params.industry) {
+      query = query.eq("industry", params.industry);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as Company[];
+  }, EXPORT_LIMIT);
+}
+
 export async function getSmeCompanies(params: ListParams) {
   const supabase = await createClient();
   const from = (params.page - 1) * PAGE_SIZE;
@@ -71,6 +121,29 @@ export async function getSmeCompanies(params: ListParams) {
   const { data, count, error } = await query;
   if (error) throw error;
   return { rows: (data ?? []) as SmeCompany[], count: count ?? 0 };
+}
+
+export async function getSmeCompaniesExport(params: Omit<ListParams, "page">) {
+  const supabase = await createClient();
+  return fetchAllRows<SmeCompany>(async (from, to) => {
+    let query = supabase
+      .from("sme_companies_enriched")
+      .select("*")
+      .order("company_name", { ascending: true })
+      .range(from, to);
+
+    if (params.q) {
+      const term = params.q.replace(/[%_]/g, "");
+      query = query.or(`company_name.ilike.%${term}%,isin.ilike.%${term}%`);
+    }
+    if (params.industry) {
+      query = query.eq("industry", params.industry);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as SmeCompany[];
+  }, EXPORT_LIMIT);
 }
 
 export async function getMainData(params: MainDataListParams) {
@@ -120,6 +193,45 @@ export async function getMainData(params: MainDataListParams) {
   return { rows: (data ?? []) as MainData[], count: count ?? 0 };
 }
 
+export async function getMainDataExport(params: Omit<MainDataListParams, "page">) {
+  const supabase = await createClient();
+
+  if (params.q) {
+    const term = params.q.replace(/[%_]/g, "");
+    return fetchAllRows<MainData>(async (from, to) => {
+      const { data, error } = await supabase.rpc("search_main_data", {
+        p_q: term,
+        p_industry: params.industry ?? null,
+        p_year: params.year ?? null,
+        p_limit: to - from + 1,
+        p_offset: from,
+      });
+      if (error) throw error;
+      return (data ?? []) as MainData[];
+    }, EXPORT_LIMIT);
+  }
+
+  return fetchAllRows<MainData>(async (from, to) => {
+    let query = supabase
+      .from("main_data_enriched")
+      .select("*")
+      .order("company_name", { ascending: true })
+      .order("qtr_date_end", { ascending: false, nullsFirst: false })
+      .range(from, to);
+
+    if (params.industry) {
+      query = query.eq("industry", params.industry);
+    }
+    if (params.year) {
+      query = query.eq("source_year", params.year);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as MainData[];
+  }, EXPORT_LIMIT);
+}
+
 export async function getCompanyAth(
   params: Omit<ListParams, "industry"> & { metric?: AthMetric }
 ) {
@@ -151,6 +263,34 @@ export async function getCompanyAth(
   return { rows: (data ?? []) as CompanyAth[], count: count ?? 0 };
 }
 
+export async function getCompanyAthExport(params: { q?: string; metric?: AthMetric }) {
+  const supabase = await createClient();
+  return fetchAllRows<CompanyAth>(async (from, to) => {
+    let query = supabase.from("companies_ath").select("*").range(from, to);
+
+    if (params.metric) {
+      query = query.order(`${params.metric}_peak`, { ascending: false, nullsFirst: false });
+    } else {
+      query = query.order("ath_date", { ascending: false });
+    }
+
+    if (params.q) {
+      const term = params.q.replace(/[%_]/g, "");
+      query = query.or(
+        `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as CompanyAth[];
+  }, EXPORT_LIMIT);
+}
+
+// Safety ceiling for company_metric_peaks (companies × metrics, realistically
+// well under this) — not a deliberate cap on results the way EXPORT_LIMIT is.
+const CUSTOM_ATH_FETCH_LIMIT = 50000;
+
 const QUARTER_NUMBERS: Record<string, number> = { q1: 1, q2: 2, q3: 3, q4: 4 };
 
 // "Latest" deliberately ignores the fiscal-year filter — it means "the most
@@ -177,13 +317,13 @@ export async function getCustomAth(params: {
   fiscalYear: number;
   quarter?: QuarterFilter;
   q?: string;
-  page: number;
+  // Omit to get every matching row back unpaginated (used for exports).
+  page?: number;
 }) {
   const supabase = await createClient();
 
   let resolvedLatestDates: Partial<Record<AthMetric, string>> | undefined;
-
-  let query = supabase.from("company_metric_peaks").select("*").in("metric", params.metrics);
+  let orFilter: string | undefined;
 
   if (params.quarter === "latest") {
     // "Latest" is a per-metric concept (each metric's own most recent record
@@ -194,37 +334,54 @@ export async function getCustomAth(params: {
     resolvedLatestDates = Object.fromEntries(
       entries.filter((e): e is [AthMetric, string] => Boolean(e[1]))
     );
-    const orFilter = Object.entries(resolvedLatestDates)
+    orFilter = Object.entries(resolvedLatestDates)
       .map(([m, date]) => `and(metric.eq.${m},peak_date.eq.${date})`)
       .join(",");
-    query = orFilter ? query.or(orFilter) : query.eq("peak_date", "");
-  } else {
-    query = query.eq("peak_fiscal_year", params.fiscalYear);
-    const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
-    if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
   }
 
-  if (params.q) {
-    const term = params.q.replace(/[%_]/g, "");
-    query = query.or(
-      `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
-    );
-  }
+  // company_metric_peaks is bounded by (companies × metrics), which can
+  // exceed PostgREST's 1000-row-per-request cap once several metrics are
+  // selected — page through it rather than risk silently dropping matches.
+  const rawRows = await fetchAllRows<CustomAthRow>(async (from, to) => {
+    let query = supabase
+      .from("company_metric_peaks")
+      .select("*")
+      .in("metric", params.metrics)
+      .range(from, to);
 
-  const { data, error } = await query;
-  if (error) throw error;
+    if (params.quarter === "latest") {
+      query = orFilter ? query.or(orFilter) : query.eq("peak_date", "");
+    } else {
+      query = query.eq("peak_fiscal_year", params.fiscalYear);
+      const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
+      if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
+    }
+
+    if (params.q) {
+      const term = params.q.replace(/[%_]/g, "");
+      query = query.or(
+        `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as CustomAthRow[];
+  }, CUSTOM_ATH_FETCH_LIMIT);
 
   // Selecting multiple metrics means each company can have one peak row per
   // metric — group those into a single row per company so AND/OR matching
   // and the table (one column pair per metric) both work off the same shape.
   const byCompany = new Map<string, MultiMetricRow>();
-  for (const r of (data ?? []) as CustomAthRow[]) {
+  for (const r of rawRows) {
     let entry = byCompany.get(r.company_name);
     if (!entry) {
       entry = {
+        accord_code: r.accord_code,
         company_name: r.company_name,
         isin: r.isin,
         nse_symbol: r.nse_symbol,
+        bse_code: r.bse_code,
         ipo_list_date: r.ipo_list_date,
         peaks: {},
       };
@@ -251,6 +408,9 @@ export async function getCustomAth(params: {
   });
 
   const count = rows.length;
+  if (params.page === undefined) {
+    return { rows, count, resolvedLatestDates };
+  }
   const from = (params.page - 1) * PAGE_SIZE;
   const pageRows = rows.slice(from, from + PAGE_SIZE);
 
@@ -309,4 +469,48 @@ export async function getIndustries(table: "companies" | "sme_companies" | "main
   const { data, error } = await supabase.from(view).select("industry");
   if (error) throw error;
   return (data ?? []).map((r) => r.industry as string);
+}
+
+// A single company's history can't exceed a few hundred quarters even at
+// quarterly granularity since 2001 — well under the 1000-row PostgREST cap,
+// so no chunked fetch is needed here.
+const COMPANY_QUARTERS_LIMIT = 500;
+
+export type CompanyDetail = {
+  company: Company | null;
+  sme: SmeCompany | null;
+  ath: CompanyAth | null;
+  quarters: MainData[];
+};
+
+export async function getCompanyDetail(accordCode: number): Promise<CompanyDetail | null> {
+  const supabase = await createClient();
+
+  const [companyRes, smeRes, athRes, quartersRes] = await Promise.all([
+    supabase.from("companies").select("*").eq("accord_code", accordCode).maybeSingle(),
+    supabase.from("sme_companies_enriched").select("*").eq("accord_code", accordCode).maybeSingle(),
+    supabase.from("companies_ath").select("*").eq("accord_code", accordCode).maybeSingle(),
+    supabase
+      .from("main_data_enriched")
+      .select("*")
+      .eq("accord_code", accordCode)
+      .order("qtr_date_end", { ascending: false, nullsFirst: false })
+      .limit(COMPANY_QUARTERS_LIMIT),
+  ]);
+
+  if (companyRes.error) throw companyRes.error;
+  if (smeRes.error) throw smeRes.error;
+  if (athRes.error) throw athRes.error;
+  if (quartersRes.error) throw quartersRes.error;
+
+  const company = (companyRes.data ?? null) as Company | null;
+  const sme = (smeRes.data ?? null) as SmeCompany | null;
+  if (!company && !sme) return null;
+
+  return {
+    company,
+    sme,
+    ath: (athRes.data ?? null) as CompanyAth | null,
+    quarters: (quartersRes.data ?? []) as MainData[],
+  };
 }

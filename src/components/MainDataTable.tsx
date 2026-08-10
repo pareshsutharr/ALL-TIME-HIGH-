@@ -1,5 +1,6 @@
 import { MainData } from "@/lib/types";
 import { formatDate, formatNumber, formatPercent } from "@/lib/format";
+import { CompanyLink } from "@/components/CompanyLink";
 
 export function MainDataTable({ rows }: { rows: MainData[] }) {
   if (rows.length === 0) {
@@ -35,7 +36,7 @@ export function MainDataTable({ rows }: { rows: MainData[] }) {
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
               <td className="px-3 py-2 font-medium">
-                {r.company_name}
+                <CompanyLink name={r.company_name} nseSymbol={r.nse_symbol} bseCode={r.bse_code} />
                 {r.industry ? (
                   <span className="block text-xs font-normal text-black/50 dark:text-white/50">
                     {r.industry}

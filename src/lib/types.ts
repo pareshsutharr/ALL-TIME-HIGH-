@@ -124,6 +124,26 @@ export type CustomAthRow = {
   peak_basis: string | null;
 };
 
+// "or" = company matches if it set an ATH record in ANY selected metric.
+// "and" = company matches only if it set an ATH record in EVERY selected metric.
+export type MatchMode = "or" | "and";
+
+export type MultiMetricPeak = {
+  value: number;
+  date: string;
+  fiscal_year: number;
+  fiscal_quarter: number;
+  basis: string | null;
+};
+
+export type MultiMetricRow = {
+  company_name: string;
+  isin: string | null;
+  nse_symbol: string | null;
+  ipo_list_date: string | null;
+  peaks: Partial<Record<AthMetric, MultiMetricPeak>>;
+};
+
 export type QuarterFilter = "all" | "q1" | "q2" | "q3" | "q4" | "latest";
 
 export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [

@@ -9,6 +9,8 @@ import {
   ATH_METRICS,
   QuarterFilter,
   PAGE_SIZE,
+  MatchMode,
+  MultiMetricRow,
 } from "@/lib/types";
 
 type ListParams = {
@@ -170,33 +172,37 @@ async function getLatestPeakDate(
 }
 
 export async function getCustomAth(params: {
-  metric: AthMetric;
+  metrics: AthMetric[];
+  mode: MatchMode;
   fiscalYear: number;
   quarter?: QuarterFilter;
   q?: string;
   page: number;
 }) {
   const supabase = await createClient();
-  const from = (params.page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
 
-  const latestDate =
-    params.quarter === "latest" ? await getLatestPeakDate(supabase, params.metric) : undefined;
+  let resolvedLatestDates: Partial<Record<AthMetric, string>> | undefined;
 
-  let query = supabase.from("company_metric_peaks").select("*", { count: "exact" }).eq(
-    "metric",
-    params.metric
-  );
+  let query = supabase.from("company_metric_peaks").select("*").in("metric", params.metrics);
 
   if (params.quarter === "latest") {
-    if (latestDate) query = query.eq("peak_date", latestDate);
+    // "Latest" is a per-metric concept (each metric's own most recent record
+    // quarter), so resolve one date per metric and OR the (metric, date) pairs.
+    const entries = await Promise.all(
+      params.metrics.map(async (m) => [m, await getLatestPeakDate(supabase, m)] as const)
+    );
+    resolvedLatestDates = Object.fromEntries(
+      entries.filter((e): e is [AthMetric, string] => Boolean(e[1]))
+    );
+    const orFilter = Object.entries(resolvedLatestDates)
+      .map(([m, date]) => `and(metric.eq.${m},peak_date.eq.${date})`)
+      .join(",");
+    query = orFilter ? query.or(orFilter) : query.eq("peak_date", "");
   } else {
     query = query.eq("peak_fiscal_year", params.fiscalYear);
     const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
     if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
   }
-
-  query = query.order("peak_value", { ascending: false }).range(from, to);
 
   if (params.q) {
     const term = params.q.replace(/[%_]/g, "");
@@ -205,13 +211,50 @@ export async function getCustomAth(params: {
     );
   }
 
-  const { data, count, error } = await query;
+  const { data, error } = await query;
   if (error) throw error;
-  return {
-    rows: (data ?? []) as CustomAthRow[],
-    count: count ?? 0,
-    resolvedLatestDate: latestDate,
-  };
+
+  // Selecting multiple metrics means each company can have one peak row per
+  // metric — group those into a single row per company so AND/OR matching
+  // and the table (one column pair per metric) both work off the same shape.
+  const byCompany = new Map<string, MultiMetricRow>();
+  for (const r of (data ?? []) as CustomAthRow[]) {
+    let entry = byCompany.get(r.company_name);
+    if (!entry) {
+      entry = {
+        company_name: r.company_name,
+        isin: r.isin,
+        nse_symbol: r.nse_symbol,
+        ipo_list_date: r.ipo_list_date,
+        peaks: {},
+      };
+      byCompany.set(r.company_name, entry);
+    }
+    entry.peaks[r.metric] = {
+      value: r.peak_value,
+      date: r.peak_date,
+      fiscal_year: r.peak_fiscal_year,
+      fiscal_quarter: r.peak_fiscal_quarter,
+      basis: r.peak_basis,
+    };
+  }
+
+  let rows = Array.from(byCompany.values());
+  if (params.mode === "and") {
+    rows = rows.filter((r) => params.metrics.every((m) => r.peaks[m]));
+  }
+
+  rows.sort((a, b) => {
+    const score = (r: MultiMetricRow) =>
+      params.metrics.reduce((sum, m) => sum + (r.peaks[m]?.value ?? 0), 0);
+    return score(b) - score(a);
+  });
+
+  const count = rows.length;
+  const from = (params.page - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(from, from + PAGE_SIZE);
+
+  return { rows: pageRows, count, resolvedLatestDates };
 }
 
 export async function getCustomAthCounts(

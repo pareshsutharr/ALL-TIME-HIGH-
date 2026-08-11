@@ -6,18 +6,8 @@ import {
   getCompanyAth,
   getIndustries,
   getTableCount,
-  getTopIndustries,
 } from "@/lib/data";
-import {
-  PAGE_SIZE,
-  Tab,
-  MIN_YEAR,
-  MAX_YEAR,
-  AthMetric,
-  ATH_METRICS,
-  QuarterFilter,
-  DEFAULT_FISCAL_YEAR,
-} from "@/lib/types";
+import { PAGE_SIZE, Tab, MIN_YEAR, MAX_YEAR, AthMetric, ATH_METRICS } from "@/lib/types";
 import { Tabs } from "@/components/Tabs";
 import { SearchControls } from "@/components/SearchControls";
 import { Pagination } from "@/components/Pagination";
@@ -26,7 +16,6 @@ import { SmeTable } from "@/components/SmeTable";
 import { MainDataTable } from "@/components/MainDataTable";
 import { AthTable } from "@/components/AthTable";
 import { DownloadExcelButton } from "@/components/DownloadExcelButton";
-import { TopSectorCard } from "@/components/TopSectorCard";
 
 type SearchParams = {
   tab?: string;
@@ -35,8 +24,6 @@ type SearchParams = {
   year?: string;
   metric?: string;
   page?: string;
-  sectorYear?: string;
-  sectorQuarter?: string;
 };
 
 function resolveMetric(rawMetric: string | undefined): AthMetric | undefined {
@@ -53,10 +40,6 @@ function resolveTab(rawTab: string | undefined): Tab {
   return "companies";
 }
 
-function resolveSectorQuarter(raw: string | undefined): QuarterFilter {
-  return raw === "q1" || raw === "q2" || raw === "q3" || raw === "q4" ? raw : "all";
-}
-
 export default async function Home({
   searchParams,
 }: {
@@ -69,8 +52,6 @@ export default async function Home({
   const year = Number(params.year) || undefined;
   const metric = resolveMetric(params.metric);
   const page = Math.max(1, Number(params.page) || 1);
-  const sectorYear = Number(params.sectorYear) || DEFAULT_FISCAL_YEAR;
-  const sectorQuarter = resolveSectorQuarter(params.sectorQuarter);
 
   const industriesTable =
     tab === "sme" ? "sme_companies" : tab === "main" ? "main_data" : tab === "ath" ? null : "companies";
@@ -86,7 +67,6 @@ export default async function Home({
     smeCount,
     mainDataCount,
     athCount,
-    topIndustries,
   ] = await Promise.all([
     tab === "companies" ? getCompanies(listParams) : null,
     tab === "sme" ? getSmeCompanies(listParams) : null,
@@ -97,7 +77,6 @@ export default async function Home({
     getTableCount("sme_companies"),
     getTableCount("main_data"),
     getTableCount("companies_ath"),
-    getTopIndustries({ fiscalYear: sectorYear, quarter: sectorQuarter, limit: 5 }),
   ]);
 
   const activeResult = companiesResult ?? smeResult ?? mainResult ?? athResult!;
@@ -112,8 +91,6 @@ export default async function Home({
     if (industry) p.set("industry", industry);
     if (year) p.set("year", String(year));
     if (metric) p.set("metric", metric);
-    if (sectorYear !== DEFAULT_FISCAL_YEAR) p.set("sectorYear", String(sectorYear));
-    if (sectorQuarter !== "all") p.set("sectorQuarter", sectorQuarter);
     p.set("page", String(targetPage));
     return `/?${p.toString()}`;
   }
@@ -154,8 +131,6 @@ export default async function Home({
           financials and shareholding pattern history (2001–2026).
         </p>
       </header>
-
-      <TopSectorCard fiscalYear={sectorYear} quarter={sectorQuarter} industries={topIndustries} />
 
       <Tabs
         active={tab}

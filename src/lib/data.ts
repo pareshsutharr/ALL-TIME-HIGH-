@@ -13,7 +13,6 @@ import {
   MatchMode,
   MultiMetricRow,
   Board,
-  IndustryStat,
 } from "@/lib/types";
 
 type ListParams = {
@@ -547,35 +546,6 @@ export async function getCustomAthCounts(
     })
   );
   return Object.fromEntries(metrics.map((m, i) => [m, counts[i]])) as Record<AthMetric, number>;
-}
-
-// Top industries by total quarterly Net Sales, for the home page's "Top
-// Sector" card. "all"/"latest" quarter reads the pre-summed full-year view
-// instead of a single quarter's.
-export async function getTopIndustries(params: {
-  fiscalYear: number;
-  quarter?: QuarterFilter;
-  limit?: number;
-}): Promise<IndustryStat[]> {
-  const supabase = await createClient();
-  const isSingleQuarter =
-    params.quarter !== undefined && params.quarter !== "all" && params.quarter !== "latest";
-  const table = isSingleQuarter ? "industry_quarterly_sales" : "industry_yearly_sales";
-
-  let query = supabase
-    .from(table)
-    .select("industry, total_sales, total_pat, company_count")
-    .eq("fiscal_year", params.fiscalYear)
-    .order("total_sales", { ascending: false })
-    .limit(params.limit ?? 5);
-
-  if (isSingleQuarter) {
-    query = query.eq("fiscal_quarter", QUARTER_NUMBERS[params.quarter as string]);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as IndustryStat[];
 }
 
 export async function getTableCount(

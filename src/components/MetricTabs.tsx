@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { AthMetric, ATH_METRICS, MatchMode, QuarterFilter } from "@/lib/types";
+import { AthMetric, ATH_METRICS, Board, MatchMode, QuarterFilter, SME_UNSUPPORTED_METRICS } from "@/lib/types";
 
 function buildHref(
+  board: Board,
   metrics: AthMetric[],
   mode: MatchMode,
   year: number,
@@ -9,6 +10,7 @@ function buildHref(
   q?: string
 ) {
   const params = new URLSearchParams();
+  if (board !== "mainboard") params.set("board", board);
   params.set("metric", metrics.join(","));
   if (mode !== "or") params.set("mode", mode);
   params.set("year", String(year));
@@ -22,6 +24,7 @@ export function MetricTabs({
   mode,
   year,
   quarter,
+  board,
   q,
   counts,
 }: {
@@ -29,10 +32,13 @@ export function MetricTabs({
   mode: MatchMode;
   year: number;
   quarter: QuarterFilter;
+  board: Board;
   q?: string;
   counts: Record<AthMetric, number>;
 }) {
-  const allValues = ATH_METRICS.map((m) => m.value);
+  const availableMetrics =
+    board === "sme" ? ATH_METRICS.filter((m) => !SME_UNSUPPORTED_METRICS.includes(m.value)) : ATH_METRICS;
+  const allValues = availableMetrics.map((m) => m.value);
   const allSelected = allValues.every((v) => active.includes(v));
 
   function toggleHref(metric: AthMetric) {
@@ -40,7 +46,7 @@ export function MetricTabs({
       ? active.filter((m) => m !== metric)
       : [...active, metric];
     // Never allow deselecting the last remaining tab.
-    return buildHref(next.length > 0 ? next : active, mode, year, quarter, q);
+    return buildHref(board, next.length > 0 ? next : active, mode, year, quarter, q);
   }
 
   const tabClass = (metric: AthMetric) =>
@@ -60,7 +66,7 @@ export function MetricTabs({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        {ATH_METRICS.map((m) => (
+        {availableMetrics.map((m) => (
           <Link
             key={m.value}
             href={toggleHref(m.value)}
@@ -71,7 +77,7 @@ export function MetricTabs({
           </Link>
         ))}
         <Link
-          href={buildHref(allSelected ? ["sales"] : allValues, mode, year, quarter, q)}
+          href={buildHref(board, allSelected ? ["sales"] : allValues, mode, year, quarter, q)}
           className="ml-1 text-xs text-black/50 dark:text-white/50 hover:text-black dark:hover:text-white underline underline-offset-2"
         >
           {allSelected ? "Reset" : "Select all"}
@@ -81,10 +87,10 @@ export function MetricTabs({
         <div className="flex items-center gap-2">
           <span className="text-xs text-black/50 dark:text-white/50">Match:</span>
           <div className="flex gap-1 rounded-md border border-black/10 dark:border-white/15 p-0.5">
-            <Link href={buildHref(active, "or", year, quarter, q)} className={modeClass("or")}>
+            <Link href={buildHref(board, active, "or", year, quarter, q)} className={modeClass("or")}>
               Any (OR)
             </Link>
-            <Link href={buildHref(active, "and", year, quarter, q)} className={modeClass("and")}>
+            <Link href={buildHref(board, active, "and", year, quarter, q)} className={modeClass("and")}>
               All (AND)
             </Link>
           </div>

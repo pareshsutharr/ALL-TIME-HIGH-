@@ -22,6 +22,8 @@ import {
   QuarterFilter,
   QUARTER_OPTIONS,
   DEFAULT_FISCAL_YEAR,
+  Board,
+  SME_UNSUPPORTED_METRICS,
 } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,11 +32,19 @@ function resolveMetric(raw: string | null): AthMetric | undefined {
   return ATH_METRICS.some((m) => m.value === raw) ? (raw as AthMetric) : undefined;
 }
 
-function resolveMetrics(raw: string | null): AthMetric[] {
+function resolveBoard(raw: string | null): Board {
+  return raw === "sme" ? "sme" : "mainboard";
+}
+
+function resolveMetrics(raw: string | null, board: Board): AthMetric[] {
+  const supported =
+    board === "sme"
+      ? ATH_METRICS.filter((m) => !SME_UNSUPPORTED_METRICS.includes(m.value))
+      : ATH_METRICS;
   const values = (raw ?? "")
     .split(",")
     .map((v) => v.trim())
-    .filter((v): v is AthMetric => ATH_METRICS.some((m) => m.value === v));
+    .filter((v): v is AthMetric => supported.some((m) => m.value === v));
   const unique = Array.from(new Set(values));
   return unique.length > 0 ? unique : ["sales"];
 }
@@ -74,12 +84,14 @@ async function buildSheet(sp: URLSearchParams): Promise<{ sheet: ExportSheet; fi
       return { sheet: buildAthSheet(rows, metric), filename: "all-time-high.xlsx" };
     }
     case "custom-ath": {
-      const metrics = resolveMetrics(sp.get("metric"));
+      const board = resolveBoard(sp.get("board"));
+      const metrics = resolveMetrics(sp.get("metric"), board);
       const mode = resolveMode(sp.get("mode"));
       const fiscalYear = Number(sp.get("year")) || DEFAULT_FISCAL_YEAR;
       const quarter = resolveQuarter(sp.get("quarter"));
-      const result = await getCustomAth({ metrics, mode, fiscalYear, quarter, q });
-      return { sheet: buildCustomAthSheet(result.rows, metrics), filename: "custom-ath.xlsx" };
+      const result = await getCustomAth({ metrics, mode, fiscalYear, quarter, board, q });
+      const filename = board === "sme" ? "custom-ath-sme.xlsx" : "custom-ath.xlsx";
+      return { sheet: buildCustomAthSheet(result.rows, metrics), filename };
     }
     default:
       throw new Error(`Unknown export type: ${type}`);

@@ -8,9 +8,12 @@ import {
   QuarterFilter,
   QUARTER_OPTIONS,
   MatchMode,
+  Board,
+  SME_UNSUPPORTED_METRICS,
 } from "@/lib/types";
 import { formatFiscalQuarter } from "@/lib/format";
 import { MetricTabs } from "@/components/MetricTabs";
+import { BoardTabs } from "@/components/BoardTabs";
 import { CustomAthControls } from "@/components/CustomAthControls";
 import { CustomAthTable } from "@/components/CustomAthTable";
 import { Pagination } from "@/components/Pagination";
@@ -21,15 +24,24 @@ type SearchParams = {
   mode?: string;
   year?: string;
   quarter?: string;
+  board?: string;
   q?: string;
   page?: string;
 };
 
-function resolveMetrics(rawMetric: string | undefined): AthMetric[] {
+function resolveBoard(rawBoard: string | undefined): Board {
+  return rawBoard === "sme" ? "sme" : "mainboard";
+}
+
+function resolveMetrics(rawMetric: string | undefined, board: Board): AthMetric[] {
+  const supported =
+    board === "sme"
+      ? ATH_METRICS.filter((m) => !SME_UNSUPPORTED_METRICS.includes(m.value))
+      : ATH_METRICS;
   const values = (rawMetric ?? "")
     .split(",")
     .map((v) => v.trim())
-    .filter((v): v is AthMetric => ATH_METRICS.some((m) => m.value === v));
+    .filter((v): v is AthMetric => supported.some((m) => m.value === v));
   const unique = Array.from(new Set(values));
   return unique.length > 0 ? unique : ["sales"];
 }
@@ -48,7 +60,8 @@ export default async function CustomAthPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const metrics = resolveMetrics(params.metric);
+  const board = resolveBoard(params.board);
+  const metrics = resolveMetrics(params.metric, board);
   const mode = resolveMode(params.mode);
   const fiscalYear = Number(params.year) || DEFAULT_FISCAL_YEAR;
   const quarter = resolveQuarter(params.quarter);
@@ -56,14 +69,15 @@ export default async function CustomAthPage({
   const page = Math.max(1, Number(params.page) || 1);
 
   const [result, counts] = await Promise.all([
-    getCustomAth({ metrics, mode, fiscalYear, quarter, q, page }),
-    getCustomAthCounts(fiscalYear, quarter),
+    getCustomAth({ metrics, mode, fiscalYear, quarter, board, q, page }),
+    getCustomAthCounts(fiscalYear, quarter, board),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(result.count / PAGE_SIZE));
 
   function buildHref(targetPage: number) {
     const p = new URLSearchParams();
+    if (board !== "mainboard") p.set("board", board);
     p.set("metric", metrics.join(","));
     if (mode !== "or") p.set("mode", mode);
     p.set("year", String(fiscalYear));
@@ -76,6 +90,7 @@ export default async function CustomAthPage({
   function buildExportHref() {
     const p = new URLSearchParams();
     p.set("type", "custom-ath");
+    if (board !== "mainboard") p.set("board", board);
     p.set("metric", metrics.join(","));
     if (mode !== "or") p.set("mode", mode);
     p.set("year", String(fiscalYear));
@@ -87,6 +102,7 @@ export default async function CustomAthPage({
   const metricLabels = metrics.map((m) => ATH_METRICS.find((x) => x.value === m)!.label);
   const metricLabel =
     metricLabels.length === 1 ? metricLabels[0] : metricLabels.join(mode === "and" ? " AND " : " OR ");
+  const boardLabel = board === "sme" ? "SME companies" : "companies";
 
   const periodLabel = (() => {
     if (quarter !== "latest") {
@@ -117,11 +133,14 @@ export default async function CustomAthPage({
         </p>
       </header>
 
+      <BoardTabs active={board} metrics={metrics} mode={mode} year={fiscalYear} quarter={quarter} q={q} />
+
       <MetricTabs
         active={metrics}
         mode={mode}
         year={fiscalYear}
         quarter={quarter}
+        board={board}
         q={q}
         counts={counts}
       />
@@ -130,7 +149,7 @@ export default async function CustomAthPage({
 
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-black/60 dark:text-white/60">
-          Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} companies with an
+          Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} {boardLabel} with an
           all-time high {metricLabel} record in {periodLabel}
         </p>
         <DownloadExcelButton href={buildExportHref()} />

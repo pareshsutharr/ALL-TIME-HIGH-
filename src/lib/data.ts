@@ -12,6 +12,7 @@ import {
   EXPORT_LIMIT,
   MatchMode,
   MultiMetricRow,
+  Board,
 } from "@/lib/types";
 
 type ListParams = {
@@ -293,15 +294,22 @@ const CUSTOM_ATH_FETCH_LIMIT = 50000;
 
 const QUARTER_NUMBERS: Record<string, number> = { q1: 1, q2: 2, q3: 3, q4: 4 };
 
+type MetricPeaksTable = "company_metric_peaks" | "sme_company_metric_peaks";
+
+function metricPeaksTable(board?: Board): MetricPeaksTable {
+  return board === "sme" ? "sme_company_metric_peaks" : "company_metric_peaks";
+}
+
 // "Latest" deliberately ignores the fiscal-year filter — it means "the most
 // recent quarter in which anyone actually set an all-time record for this
 // metric," which is a global concept per metric, not scoped to a year.
 async function getLatestPeakDate(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  metric: AthMetric
+  metric: AthMetric,
+  table: MetricPeaksTable
 ) {
   const { data, error } = await supabase
-    .from("company_metric_peaks")
+    .from(table)
     .select("peak_date")
     .eq("metric", metric)
     .order("peak_date", { ascending: false })
@@ -316,11 +324,13 @@ export async function getCustomAth(params: {
   mode: MatchMode;
   fiscalYear: number;
   quarter?: QuarterFilter;
+  board?: Board;
   q?: string;
   // Omit to get every matching row back unpaginated (used for exports).
   page?: number;
 }) {
   const supabase = await createClient();
+  const table = metricPeaksTable(params.board);
 
   let resolvedLatestDates: Partial<Record<AthMetric, string>> | undefined;
   let orFilter: string | undefined;
@@ -329,7 +339,7 @@ export async function getCustomAth(params: {
     // "Latest" is a per-metric concept (each metric's own most recent record
     // quarter), so resolve one date per metric and OR the (metric, date) pairs.
     const entries = await Promise.all(
-      params.metrics.map(async (m) => [m, await getLatestPeakDate(supabase, m)] as const)
+      params.metrics.map(async (m) => [m, await getLatestPeakDate(supabase, m, table)] as const)
     );
     resolvedLatestDates = Object.fromEntries(
       entries.filter((e): e is [AthMetric, string] => Boolean(e[1]))
@@ -339,12 +349,13 @@ export async function getCustomAth(params: {
       .join(",");
   }
 
-  // company_metric_peaks is bounded by (companies × metrics), which can
-  // exceed PostgREST's 1000-row-per-request cap once several metrics are
-  // selected — page through it rather than risk silently dropping matches.
+  // company_metric_peaks (or sme_company_metric_peaks) is bounded by
+  // (companies × metrics), which can exceed PostgREST's 1000-row-per-request
+  // cap once several metrics are selected — page through it rather than risk
+  // silently dropping matches.
   const rawRows = await fetchAllRows<CustomAthRow>(async (from, to) => {
     let query = supabase
-      .from("company_metric_peaks")
+      .from(table)
       .select("*")
       .in("metric", params.metrics)
       .range(from, to);
@@ -419,19 +430,21 @@ export async function getCustomAth(params: {
 
 export async function getCustomAthCounts(
   fiscalYear: number,
-  quarter?: QuarterFilter
+  quarter?: QuarterFilter,
+  board?: Board
 ): Promise<Record<AthMetric, number>> {
   const supabase = await createClient();
+  const table = metricPeaksTable(board);
   const metrics = ATH_METRICS.map((m) => m.value);
   const counts = await Promise.all(
     metrics.map(async (metric) => {
       let query = supabase
-        .from("company_metric_peaks")
+        .from(table)
         .select("*", { count: "exact", head: true })
         .eq("metric", metric);
 
       if (quarter === "latest") {
-        const latestDate = await getLatestPeakDate(supabase, metric);
+        const latestDate = await getLatestPeakDate(supabase, metric, table);
         query = latestDate ? query.eq("peak_date", latestDate) : query.eq("peak_date", "");
       } else {
         query = query.eq("peak_fiscal_year", fiscalYear);

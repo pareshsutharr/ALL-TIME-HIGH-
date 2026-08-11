@@ -178,6 +178,18 @@ export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [
 
 export type Tab = "companies" | "sme" | "main" | "ath";
 
+export type Board = "mainboard" | "sme";
+
+export const BOARD_OPTIONS: { value: Board; label: string }[] = [
+  { value: "mainboard", label: "Mainboard" },
+  { value: "sme", label: "SME" },
+];
+
+// sme_companies carries no price-history columns, so the two 52-week-high
+// metrics (sourced from `companies` directly rather than main_data) have no
+// SME equivalent — see the sme_company_metric_peaks migration.
+export const SME_UNSUPPORTED_METRICS: AthMetric[] = ["nse_52w_high", "bse_52w_high"];
+
 export const PAGE_SIZE = 25;
 
 // Cap on rows fetched for an Excel export — protects the biggest table

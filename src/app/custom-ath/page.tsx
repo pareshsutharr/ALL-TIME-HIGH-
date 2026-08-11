@@ -114,7 +114,7 @@ export default async function CustomAthPage({
   if (q) activeCount++;
 
   return (
-    <div className="flex-1 flex flex-col w-full px-4 sm:px-6 lg:pl-60 py-8 gap-6">
+    <div className="flex-1 flex flex-col w-full px-4 sm:px-6 lg:pl-[250px] py-8 gap-6">
       <header className="flex flex-col gap-1">
         <Link
           href="/"

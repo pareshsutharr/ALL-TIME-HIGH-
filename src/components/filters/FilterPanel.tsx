@@ -69,7 +69,7 @@ export function FilterPanel({
 
   return (
     <>
-      <aside className="hidden lg:block lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:w-52 lg:overflow-y-auto lg:border-r lg:border-black/10 dark:lg:border-white/15 lg:bg-white dark:lg:bg-[#0a0a0a] lg:px-6 lg:py-8">
+      <aside className="hidden lg:block lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:w-[218px] lg:overflow-y-auto lg:border-r lg:border-black/10 dark:lg:border-white/15 lg:bg-white dark:lg:bg-[#0a0a0a] lg:px-6 lg:py-8">
         {children}
       </aside>
 

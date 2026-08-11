@@ -58,7 +58,7 @@ export function CustomAthTable({
         <tbody>
           {rows.map((r) => (
             <tr
-              key={r.company_name}
+              key={r.accord_code}
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
               <td className="px-3 py-2 font-medium">

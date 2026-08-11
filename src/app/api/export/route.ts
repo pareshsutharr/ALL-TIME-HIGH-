@@ -33,7 +33,9 @@ function resolveMetric(raw: string | null): AthMetric | undefined {
 }
 
 function resolveBoard(raw: string | null): Board {
-  return raw === "sme" ? "sme" : "mainboard";
+  if (raw === "sme") return "sme";
+  if (raw === "all") return "all";
+  return "mainboard";
 }
 
 function resolveMetrics(raw: string | null, board: Board): AthMetric[] {
@@ -90,7 +92,8 @@ async function buildSheet(sp: URLSearchParams): Promise<{ sheet: ExportSheet; fi
       const fiscalYear = Number(sp.get("year")) || DEFAULT_FISCAL_YEAR;
       const quarter = resolveQuarter(sp.get("quarter"));
       const result = await getCustomAth({ metrics, mode, fiscalYear, quarter, board, q });
-      const filename = board === "sme" ? "custom-ath-sme.xlsx" : "custom-ath.xlsx";
+      const filename =
+        board === "sme" ? "custom-ath-sme.xlsx" : board === "all" ? "custom-ath-all.xlsx" : "custom-ath.xlsx";
       return { sheet: buildCustomAthSheet(result.rows, metrics), filename };
     }
     default:

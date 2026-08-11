@@ -188,9 +188,10 @@ export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [
 
 export type Tab = "companies" | "sme" | "main" | "ath";
 
-export type Board = "mainboard" | "sme";
+export type Board = "all" | "mainboard" | "sme";
 
 export const BOARD_OPTIONS: { value: Board; label: string }[] = [
+  { value: "all", label: "All Listed" },
   { value: "mainboard", label: "Mainboard" },
   { value: "sme", label: "SME" },
 ];

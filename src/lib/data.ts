@@ -294,10 +294,15 @@ const CUSTOM_ATH_FETCH_LIMIT = 50000;
 
 const QUARTER_NUMBERS: Record<string, number> = { q1: 1, q2: 2, q3: 3, q4: 4 };
 
-type MetricPeaksTable = "company_metric_peaks" | "sme_company_metric_peaks";
+type MetricPeaksTable =
+  | "company_metric_peaks"
+  | "sme_company_metric_peaks"
+  | "all_company_metric_peaks";
 
 function metricPeaksTable(board?: Board): MetricPeaksTable {
-  return board === "sme" ? "sme_company_metric_peaks" : "company_metric_peaks";
+  if (board === "sme") return "sme_company_metric_peaks";
+  if (board === "all") return "all_company_metric_peaks";
+  return "company_metric_peaks";
 }
 
 // "Latest" deliberately ignores the fiscal-year filter — it means "the most
@@ -383,9 +388,12 @@ export async function getCustomAth(params: {
   // Selecting multiple metrics means each company can have one peak row per
   // metric — group those into a single row per company so AND/OR matching
   // and the table (one column pair per metric) both work off the same shape.
-  const byCompany = new Map<string, MultiMetricRow>();
+  // Keyed by accord_code (the one identifier guaranteed unique across both
+  // the mainboard and SME source tables) rather than company_name, since the
+  // "all" board unions rows from both.
+  const byCompany = new Map<number, MultiMetricRow>();
   for (const r of rawRows) {
-    let entry = byCompany.get(r.company_name);
+    let entry = byCompany.get(r.accord_code);
     if (!entry) {
       entry = {
         accord_code: r.accord_code,
@@ -396,7 +404,7 @@ export async function getCustomAth(params: {
         ipo_list_date: r.ipo_list_date,
         peaks: {},
       };
-      byCompany.set(r.company_name, entry);
+      byCompany.set(r.accord_code, entry);
     }
     entry.peaks[r.metric] = {
       value: r.peak_value,

@@ -30,7 +30,9 @@ type SearchParams = {
 };
 
 function resolveBoard(rawBoard: string | undefined): Board {
-  return rawBoard === "sme" ? "sme" : "mainboard";
+  if (rawBoard === "sme") return "sme";
+  if (rawBoard === "all") return "all";
+  return "mainboard";
 }
 
 function resolveMetrics(rawMetric: string | undefined, board: Board): AthMetric[] {
@@ -102,7 +104,8 @@ export default async function CustomAthPage({
   const metricLabels = metrics.map((m) => ATH_METRICS.find((x) => x.value === m)!.label);
   const metricLabel =
     metricLabels.length === 1 ? metricLabels[0] : metricLabels.join(mode === "and" ? " AND " : " OR ");
-  const boardLabel = board === "sme" ? "SME companies" : "companies";
+  const boardLabel =
+    board === "sme" ? "SME companies" : board === "all" ? "listed companies" : "companies";
 
   const periodLabel = (() => {
     if (quarter !== "latest") {

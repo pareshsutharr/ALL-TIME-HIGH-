@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { MIN_FISCAL_YEAR, MAX_FISCAL_YEAR, DEFAULT_FISCAL_YEAR, QUARTER_OPTIONS } from "@/lib/types";
+import { Spinner } from "@/components/Spinner";
 
 const YEARS = Array.from(
   { length: MAX_FISCAL_YEAR - MIN_FISCAL_YEAR + 1 },
@@ -16,6 +17,7 @@ export function CustomAthControls() {
   const urlQ = searchParams.get("q") ?? "";
   const quarter = searchParams.get("quarter") ?? "all";
   const isLatest = quarter === "latest";
+  const [isPending, startTransition] = useTransition();
 
   const [q, setQ] = useState(urlQ);
   const [syncedQ, setSyncedQ] = useState(urlQ);
@@ -33,7 +35,9 @@ export function CustomAthControls() {
       else params.delete(key);
     }
     params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   }
 
   function onSearchChange(value: string) {
@@ -86,6 +90,12 @@ export function CustomAthControls() {
           Clear
         </button>
       )}
+      {isPending ? (
+        <span className="flex items-center gap-1.5 text-xs text-black/50 dark:text-white/50 sm:self-center">
+          <Spinner className="h-3.5 w-3.5" />
+          Loading…
+        </span>
+      ) : null}
     </div>
   );
 }

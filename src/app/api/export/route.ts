@@ -101,25 +101,36 @@ async function buildSheet(sp: URLSearchParams): Promise<{ sheet: ExportSheet; fi
 export async function GET(req: NextRequest) {
   let sheet: ExportSheet;
   let filename: string;
+
   try {
     ({ sheet, filename } = await buildSheet(req.nextUrl.searchParams));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Export failed";
-    return new Response(message, { status: 400 });
+    // Only the "unknown type"/bad-input case from buildSheet's own checks is
+    // a client mistake (400) — anything else (a thrown Supabase/data error)
+    // is ours to fix, not the caller's.
+    const status = message.startsWith("Unknown export type") ? 400 : 500;
+    console.error("Export failed while building sheet:", err);
+    return new Response(message, { status });
   }
 
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Data");
-  worksheet.columns = sheet.columns;
-  worksheet.addRows(sheet.rows);
-  worksheet.getRow(1).font = { bold: true };
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Data");
+    worksheet.columns = sheet.columns;
+    worksheet.addRows(sheet.rows);
+    worksheet.getRow(1).font = { bold: true };
 
-  const buffer = await workbook.xlsx.writeBuffer();
+    const buffer = await workbook.xlsx.writeBuffer();
 
-  return new Response(buffer, {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-    },
-  });
+    return new Response(buffer, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (err) {
+    console.error("Export failed while generating workbook:", err);
+    return new Response("Failed to generate the Excel file", { status: 500 });
+  }
 }

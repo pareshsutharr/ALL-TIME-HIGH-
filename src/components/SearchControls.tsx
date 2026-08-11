@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { ATH_METRICS } from "@/lib/types";
+import { Spinner } from "@/components/Spinner";
 
 export function SearchControls({
   industries,
@@ -17,6 +18,7 @@ export function SearchControls({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const urlQ = searchParams.get("q") ?? "";
+  const [isPending, startTransition] = useTransition();
 
   const [q, setQ] = useState(urlQ);
   const [syncedQ, setSyncedQ] = useState(urlQ);
@@ -34,7 +36,9 @@ export function SearchControls({
       else params.delete(key);
     }
     params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   }
 
   function onSearchChange(value: string) {
@@ -108,6 +112,12 @@ export function SearchControls({
           Clear
         </button>
       )}
+      {isPending ? (
+        <span className="flex items-center gap-1.5 text-xs text-black/50 dark:text-white/50 sm:self-center">
+          <Spinner className="h-3.5 w-3.5" />
+          Loading…
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -62,7 +62,7 @@ export function CustomAthTable({
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
               <td className="px-3 py-2 font-medium">
-                <CompanyLink name={r.company_name} nseSymbol={r.nse_symbol} bseCode={r.bse_code} />
+                <CompanyLink name={r.company_name} isin={r.isin} nseSymbol={r.nse_symbol} bseCode={r.bse_code} />
                 {r.nse_symbol ? (
                   <span className="block text-xs font-normal text-black/50 dark:text-white/50">
                     {r.nse_symbol}

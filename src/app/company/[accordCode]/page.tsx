@@ -5,6 +5,7 @@ import { ATH_METRICS } from "@/lib/types";
 import { athPeakFor } from "@/lib/athPeaks";
 import { formatDate, formatFiscalQuarter, formatNumber, formatPercent, formatPrice } from "@/lib/format";
 import { MainDataTable } from "@/components/MainDataTable";
+import { CompanyLogo } from "@/components/CompanyLogo";
 
 function formatByUnit(unit: "cr" | "percent" | "price") {
   if (unit === "percent") return formatPercent;
@@ -48,7 +49,10 @@ export default async function CompanyPage({
         >
           ← All Time High
         </Link>
-        <h1 className="text-2xl font-semibold">{name}</h1>
+        <div className="flex items-center gap-3">
+          <CompanyLogo isin={isin} size={40} />
+          <h1 className="text-2xl font-semibold">{name}</h1>
+        </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-black/60 dark:text-white/60">
           {nseSymbol ? <span>NSE: {nseSymbol}</span> : null}
           {bseCode ? <span>BSE: {bseCode}</span> : null}

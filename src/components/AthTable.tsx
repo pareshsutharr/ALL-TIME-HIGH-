@@ -61,7 +61,7 @@ export function AthTable({ rows, metric }: { rows: CompanyAth[]; metric?: AthMet
                 className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
               >
                 <td className="px-3 py-2 font-medium">
-                  <CompanyLink name={c.company_name} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
+                  <CompanyLink name={c.company_name} isin={c.isin} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
                   {c.nse_symbol ? (
                     <span className="block text-xs font-normal text-black/50 dark:text-white/50">
                       {c.nse_symbol}

@@ -30,7 +30,7 @@ export function SmeTable({ rows }: { rows: SmeCompany[] }) {
               className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
             >
               <td className="px-3 py-2 font-medium">
-                <CompanyLink name={c.company_name} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
+                <CompanyLink name={c.company_name} isin={c.isin} nseSymbol={c.nse_symbol} bseCode={c.bse_code} />
               </td>
               <td className="px-3 py-2 text-black/70 dark:text-white/70">
                 {c.industry ?? "—"}

@@ -186,6 +186,13 @@ export const QUARTER_OPTIONS: { value: QuarterFilter; label: string }[] = [
   { value: "latest", label: "Latest quarter" },
 ];
 
+export type IndustryStat = {
+  industry: string;
+  total_sales: number;
+  total_pat: number | null;
+  company_count: number;
+};
+
 export type Tab = "companies" | "sme" | "main" | "ath";
 
 export type Board = "all" | "mainboard" | "sme";

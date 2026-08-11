@@ -29,11 +29,13 @@ function CloseIcon() {
   );
 }
 
-// Reusable filter-panel shell: a sticky sidebar on desktop, collapsing into
-// a "Filters" trigger + slide-in drawer below the lg breakpoint. `children`
-// is the actual filter controls (rendered once for the desktop sidebar and
-// once inside the drawer — cheap, since it's just links/inputs, and lets
-// each surface keep independent local UI state like an expanded checklist).
+// Reusable filter-panel shell: a sidebar fixed to the viewport's left edge
+// on desktop (full height, independent of page scroll/width), collapsing
+// into a "Filters" trigger + slide-in drawer below the lg breakpoint.
+// `children` is the actual filter controls (rendered once for the desktop
+// sidebar and once inside the drawer — cheap, since it's just links/inputs,
+// and lets each surface keep independent local UI state like an expanded
+// checklist).
 export function FilterPanel({
   children,
   activeCount = 0,
@@ -67,7 +69,7 @@ export function FilterPanel({
 
   return (
     <>
-      <aside className="hidden lg:block lg:w-52 lg:shrink-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:border-r lg:border-black/10 dark:lg:border-white/15 lg:pr-6">
+      <aside className="hidden lg:block lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:w-52 lg:overflow-y-auto lg:border-r lg:border-black/10 dark:lg:border-white/15 lg:bg-white dark:lg:bg-[#0a0a0a] lg:px-6 lg:py-8">
         {children}
       </aside>
 

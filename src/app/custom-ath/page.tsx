@@ -114,7 +114,7 @@ export default async function CustomAthPage({
   if (q) activeCount++;
 
   return (
-    <div className="flex-1 flex flex-col max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 gap-6">
+    <div className="flex-1 flex flex-col w-full px-4 sm:px-6 lg:pl-60 py-8 gap-6">
       <header className="flex flex-col gap-1">
         <Link
           href="/"
@@ -125,33 +125,31 @@ export default async function CustomAthPage({
         <h1 className="text-2xl font-semibold">Custom ATH by Year</h1>
       </header>
 
-      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
-        <FilterPanel activeCount={activeCount}>
-          <CustomAthSidebar
-            board={board}
-            metrics={metrics}
-            mode={mode}
-            year={fiscalYear}
-            quarter={quarter}
-            q={q}
-            counts={counts}
-          />
-        </FilterPanel>
+      <FilterPanel activeCount={activeCount}>
+        <CustomAthSidebar
+          board={board}
+          metrics={metrics}
+          mode={mode}
+          year={fiscalYear}
+          quarter={quarter}
+          q={q}
+          counts={counts}
+        />
+      </FilterPanel>
 
-        <div className="flex-1 min-w-0 flex flex-col gap-4 mt-4 lg:mt-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <SearchBar placeholder="Search by company name, ISIN, or symbol..." />
-            <DownloadExcelButton href={buildExportHref()} />
-          </div>
-
-          <p className="text-sm text-black/60 dark:text-white/60">
-            Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} {boardLabel}
-          </p>
-
-          <CustomAthTable rows={result.rows} metrics={metrics} />
-
-          <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <SearchBar placeholder="Search by company name, ISIN, or symbol..." />
+          <DownloadExcelButton href={buildExportHref()} />
         </div>
+
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} {boardLabel}
+        </p>
+
+        <CustomAthTable rows={result.rows} metrics={metrics} />
+
+        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
       </div>
     </div>
   );

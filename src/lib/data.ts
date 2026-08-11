@@ -325,6 +325,75 @@ async function getLatestPeakDate(
   return data?.peak_date as string | undefined;
 }
 
+// Single-metric fast path for getCustomAth: with only one metric selected
+// there's no cross-metric grouping to do, so Postgres can sort and paginate
+// directly — fetch exactly one page's worth of rows instead of pulling every
+// matching row into JS just to slice a page out of it. Exports still need
+// every row regardless of metric count, so this only applies to paginated
+// UI requests (params.page !== undefined in the caller).
+async function getSingleMetricCustomAthPage(params: {
+  metric: AthMetric;
+  fiscalYear: number;
+  quarter?: QuarterFilter;
+  board?: Board;
+  q?: string;
+  page: number;
+}) {
+  const supabase = await createClient();
+  const table = metricPeaksTable(params.board);
+  const from = (params.page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let resolvedLatestDates: Partial<Record<AthMetric, string>> | undefined;
+
+  let query = supabase
+    .from(table)
+    .select("*", { count: "exact" })
+    .eq("metric", params.metric)
+    .order("peak_value", { ascending: false })
+    .range(from, to);
+
+  if (params.quarter === "latest") {
+    const latestDate = await getLatestPeakDate(supabase, params.metric, table);
+    resolvedLatestDates = latestDate ? { [params.metric]: latestDate } : undefined;
+    query = latestDate ? query.eq("peak_date", latestDate) : query.eq("peak_date", "");
+  } else {
+    query = query.eq("peak_fiscal_year", params.fiscalYear);
+    const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
+    if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
+  }
+
+  if (params.q) {
+    const term = params.q.replace(/[%_]/g, "");
+    query = query.or(
+      `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
+    );
+  }
+
+  const { data, count, error } = await query;
+  if (error) throw error;
+
+  const rows: MultiMetricRow[] = ((data ?? []) as CustomAthRow[]).map((r) => ({
+    accord_code: r.accord_code,
+    company_name: r.company_name,
+    isin: r.isin,
+    nse_symbol: r.nse_symbol,
+    bse_code: r.bse_code,
+    ipo_list_date: r.ipo_list_date,
+    peaks: {
+      [params.metric]: {
+        value: r.peak_value,
+        date: r.peak_date,
+        fiscal_year: r.peak_fiscal_year,
+        fiscal_quarter: r.peak_fiscal_quarter,
+        basis: r.peak_basis,
+      },
+    },
+  }));
+
+  return { rows, count: count ?? 0, resolvedLatestDates };
+}
+
 export async function getCustomAth(params: {
   metrics: AthMetric[];
   mode: MatchMode;
@@ -335,6 +404,17 @@ export async function getCustomAth(params: {
   // Omit to get every matching row back unpaginated (used for exports).
   page?: number;
 }) {
+  if (params.metrics.length === 1 && params.page !== undefined) {
+    return getSingleMetricCustomAthPage({
+      metric: params.metrics[0],
+      fiscalYear: params.fiscalYear,
+      quarter: params.quarter,
+      board: params.board,
+      q: params.q,
+      page: params.page,
+    });
+  }
+
   const supabase = await createClient();
   const table = metricPeaksTable(params.board);
 

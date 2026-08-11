@@ -220,7 +220,7 @@ export const DEFAULT_VISIBLE_ATH_METRICS: AthMetric[] = [
   "roce",
 ];
 
-export const PAGE_SIZE = 25;
+export const PAGE_SIZE = 20;
 
 // Cap on rows fetched for an Excel export — protects the biggest table
 // (main_data, ~1.38M rows) from an unbounded query/response.

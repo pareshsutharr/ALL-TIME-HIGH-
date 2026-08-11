@@ -11,10 +11,9 @@ import {
   Board,
   SME_UNSUPPORTED_METRICS,
 } from "@/lib/types";
-import { formatFiscalQuarter } from "@/lib/format";
-import { MetricTabs } from "@/components/MetricTabs";
-import { BoardTabs } from "@/components/BoardTabs";
-import { CustomAthControls } from "@/components/CustomAthControls";
+import { CustomAthSidebar } from "@/components/CustomAthSidebar";
+import { FilterPanel } from "@/components/filters/FilterPanel";
+import { SearchBar } from "@/components/filters/SearchBar";
 import { CustomAthTable } from "@/components/CustomAthTable";
 import { Pagination } from "@/components/Pagination";
 import { DownloadExcelButton } from "@/components/DownloadExcelButton";
@@ -101,23 +100,18 @@ export default async function CustomAthPage({
     return `/api/export?${p.toString()}`;
   }
 
-  const metricLabels = metrics.map((m) => ATH_METRICS.find((x) => x.value === m)!.label);
-  const metricLabel =
-    metricLabels.length === 1 ? metricLabels[0] : metricLabels.join(mode === "and" ? " AND " : " OR ");
   const boardLabel =
     board === "sme" ? "SME companies" : board === "all" ? "listed companies" : "companies";
 
-  const periodLabel = (() => {
-    if (quarter !== "latest") {
-      return quarter === "all"
-        ? `FY${fiscalYear}`
-        : `${QUARTER_OPTIONS.find((o) => o.value === quarter)!.label.split(" ")[0]} FY${fiscalYear}`;
-    }
-    const dates = Array.from(new Set(Object.values(result.resolvedLatestDates ?? {})));
-    return dates.length === 1 && dates[0]
-      ? `the latest reported quarter (${formatFiscalQuarter(dates[0])})`
-      : "the latest reported quarter";
-  })();
+  // How many filter categories differ from their default — surfaced as the
+  // "Filters (N)" badge on the mobile drawer trigger.
+  let activeCount = 0;
+  if (board !== "mainboard") activeCount++;
+  if (!(metrics.length === 1 && metrics[0] === "sales")) activeCount++;
+  if (mode !== "or") activeCount++;
+  if (fiscalYear !== DEFAULT_FISCAL_YEAR) activeCount++;
+  if (quarter !== "all") activeCount++;
+  if (q) activeCount++;
 
   return (
     <div className="flex-1 flex flex-col max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 gap-6">
@@ -129,38 +123,36 @@ export default async function CustomAthPage({
           ← All Time High
         </Link>
         <h1 className="text-2xl font-semibold">Custom ATH by Year</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Companies that set a new all-time record for a financial metric within a specific
-          fiscal year (or quarter) — pick a period and a metric to see who broke their own
-          record then.
-        </p>
       </header>
 
-      <BoardTabs active={board} metrics={metrics} mode={mode} year={fiscalYear} quarter={quarter} q={q} />
+      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8">
+        <FilterPanel activeCount={activeCount}>
+          <CustomAthSidebar
+            board={board}
+            metrics={metrics}
+            mode={mode}
+            year={fiscalYear}
+            quarter={quarter}
+            q={q}
+            counts={counts}
+          />
+        </FilterPanel>
 
-      <MetricTabs
-        active={metrics}
-        mode={mode}
-        year={fiscalYear}
-        quarter={quarter}
-        board={board}
-        q={q}
-        counts={counts}
-      />
+        <div className="flex-1 min-w-0 flex flex-col gap-4 mt-4 lg:mt-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <SearchBar placeholder="Search by company name, ISIN, or symbol..." />
+            <DownloadExcelButton href={buildExportHref()} />
+          </div>
 
-      <CustomAthControls />
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} {boardLabel}
+          </p>
 
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Showing {result.rows.length} of {result.count.toLocaleString("en-IN")} {boardLabel} with an
-          all-time high {metricLabel} record in {periodLabel}
-        </p>
-        <DownloadExcelButton href={buildExportHref()} />
+          <CustomAthTable rows={result.rows} metrics={metrics} />
+
+          <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+        </div>
       </div>
-
-      <CustomAthTable rows={result.rows} metrics={metrics} />
-
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
     </div>
   );
 }

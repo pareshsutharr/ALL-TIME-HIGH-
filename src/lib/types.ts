@@ -201,6 +201,18 @@ export const BOARD_OPTIONS: { value: Board; label: string }[] = [
 // SME equivalent — see the sme_company_metric_peaks migration.
 export const SME_UNSUPPORTED_METRICS: AthMetric[] = ["nse_52w_high", "bse_52w_high"];
 
+// The subset of ATH_METRICS shown by default in the Custom ATH sidebar's
+// metric checklist — the rest sit behind a "+N more metrics" expander so the
+// panel doesn't open with all 11 options at once.
+export const DEFAULT_VISIBLE_ATH_METRICS: AthMetric[] = [
+  "sales",
+  "pat",
+  "ebidta",
+  "gross_sales_margin",
+  "roe",
+  "roce",
+];
+
 export const PAGE_SIZE = 25;
 
 // Cap on rows fetched for an Excel export — protects the biggest table

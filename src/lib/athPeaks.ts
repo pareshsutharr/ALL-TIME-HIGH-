@@ -26,6 +26,10 @@ export function athPeakFor(row: CompanyAth, metric: AthMetric): AthPeak {
       return { value: row.fii_peak, date: row.fii_peak_date, basis: row.fii_peak_basis };
     case "dii":
       return { value: row.dii_peak, date: row.dii_peak_date, basis: row.dii_peak_basis };
+    case "roe":
+      return { value: row.roe_peak, date: row.roe_peak_date, basis: row.roe_peak_basis };
+    case "roce":
+      return { value: row.roce_peak, date: row.roce_peak_date, basis: row.roce_peak_basis };
     case "nse_52w_high":
       return {
         value: row.nse_52w_high_peak,

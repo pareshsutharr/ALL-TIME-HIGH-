@@ -101,6 +101,12 @@ export type CompanyAth = {
   bse_52w_high_peak: number | null;
   bse_52w_high_peak_date: string | null;
   bse_52w_high_peak_basis: string | null;
+  roe_peak: number | null;
+  roe_peak_date: string | null;
+  roe_peak_basis: string | null;
+  roce_peak: number | null;
+  roce_peak_date: string | null;
+  roce_peak_basis: string | null;
 };
 
 export type AthMetric =
@@ -111,6 +117,8 @@ export type AthMetric =
   | "ebidta_margin"
   | "fii"
   | "dii"
+  | "roe"
+  | "roce"
   | "nse_52w_high"
   | "bse_52w_high";
 
@@ -123,6 +131,8 @@ export const ATH_METRICS: { value: AthMetric; label: string; unit: "cr" | "perce
   { value: "ebidta_margin", label: "EBIDTA Margin", unit: "percent" },
   { value: "fii", label: "FII", unit: "percent" },
   { value: "dii", label: "DII", unit: "percent" },
+  { value: "roe", label: "ROE", unit: "percent" },
+  { value: "roce", label: "ROCE", unit: "percent" },
   { value: "nse_52w_high", label: "NSE 52W High", unit: "price" },
   { value: "bse_52w_high", label: "BSE 52W High", unit: "price" },
 ];

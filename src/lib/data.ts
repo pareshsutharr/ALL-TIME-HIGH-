@@ -354,8 +354,14 @@ async function getSingleMetricCustomAthPage(params: {
 
   if (params.quarter === "latest") {
     const latestDate = await getLatestPeakDate(supabase, params.metric, table);
-    resolvedLatestDates = latestDate ? { [params.metric]: latestDate } : undefined;
-    query = latestDate ? query.eq("peak_date", latestDate) : query.eq("peak_date", "");
+    // No company has ever recorded this metric on this board (e.g. a
+    // 52-week-high metric on the SME board) — nothing to fetch, and "" isn't
+    // a valid `date` literal to filter on, so short-circuit instead.
+    if (!latestDate) {
+      return { rows: [] as MultiMetricRow[], count: 0, resolvedLatestDates: undefined };
+    }
+    resolvedLatestDates = { [params.metric]: latestDate };
+    query = query.eq("peak_date", latestDate);
   } else {
     query = query.eq("peak_fiscal_year", params.fiscalYear);
     const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
@@ -438,32 +444,40 @@ export async function getCustomAth(params: {
   // (companies × metrics), which can exceed PostgREST's 1000-row-per-request
   // cap once several metrics are selected — page through it rather than risk
   // silently dropping matches.
-  const rawRows = await fetchAllRows<CustomAthRow>(async (from, to) => {
-    let query = supabase
-      .from(table)
-      .select("*")
-      .in("metric", params.metrics)
-      .range(from, to);
+  //
+  // "Latest" with none of the selected metrics ever recorded on this board
+  // (e.g. only 52-week-high metrics, on the SME board) means nothing can
+  // match — skip the query entirely rather than filter on peak_date = ""
+  // (not a valid `date` literal, and would just error).
+  const skipQuery = params.quarter === "latest" && !orFilter;
+  const rawRows = skipQuery
+    ? []
+    : await fetchAllRows<CustomAthRow>(async (from, to) => {
+        let query = supabase
+          .from(table)
+          .select("*")
+          .in("metric", params.metrics)
+          .range(from, to);
 
-    if (params.quarter === "latest") {
-      query = orFilter ? query.or(orFilter) : query.eq("peak_date", "");
-    } else {
-      query = query.eq("peak_fiscal_year", params.fiscalYear);
-      const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
-      if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
-    }
+        if (params.quarter === "latest") {
+          query = query.or(orFilter!);
+        } else {
+          query = query.eq("peak_fiscal_year", params.fiscalYear);
+          const quarterNumber = params.quarter ? QUARTER_NUMBERS[params.quarter] : undefined;
+          if (quarterNumber) query = query.eq("peak_fiscal_quarter", quarterNumber);
+        }
 
-    if (params.q) {
-      const term = params.q.replace(/[%_]/g, "");
-      query = query.or(
-        `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
-      );
-    }
+        if (params.q) {
+          const term = params.q.replace(/[%_]/g, "");
+          query = query.or(
+            `company_name.ilike.%${term}%,isin.ilike.%${term}%,nse_symbol.ilike.%${term}%`
+          );
+        }
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data ?? []) as CustomAthRow[];
-  }, CUSTOM_ATH_FETCH_LIMIT);
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data ?? []) as CustomAthRow[];
+      }, CUSTOM_ATH_FETCH_LIMIT);
 
   // Selecting multiple metrics means each company can have one peak row per
   // metric — group those into a single row per company so AND/OR matching
@@ -533,7 +547,11 @@ export async function getCustomAthCounts(
 
       if (quarter === "latest") {
         const latestDate = await getLatestPeakDate(supabase, metric, table);
-        query = latestDate ? query.eq("peak_date", latestDate) : query.eq("peak_date", "");
+        // No company has ever recorded this metric on this board (e.g. a
+        // 52-week-high metric on the SME board) — count is 0, and "" isn't a
+        // valid `date` literal to filter on, so short-circuit instead.
+        if (!latestDate) return 0;
+        query = query.eq("peak_date", latestDate);
       } else {
         query = query.eq("peak_fiscal_year", fiscalYear);
         const quarterNumber = quarter ? QUARTER_NUMBERS[quarter] : undefined;

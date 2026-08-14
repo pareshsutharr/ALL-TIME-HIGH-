@@ -21,14 +21,69 @@ type NewHigh = {
   previous: number;
 };
 
+type FieldChange = { field: string; from: unknown; to: unknown };
+type CompanyChange = { accord_code: number; company_name: string; changes: FieldChange[] };
+type QuarterChange = { accord_code: number; company_name: string; qtr_date_end: string; changes: FieldChange[] };
+type RoeRoceChange = { accord_code: number; company_name: string; fy_date_end: string; changes: FieldChange[] };
+
 type IngestSummary = {
+  noChanges: boolean;
   companiesInFile: number;
-  companiesUpserted: number;
+  companiesChanged: number;
   newCompanies: number;
   newHighs: NewHigh[];
-  quarterRowsReplaced: number;
-  roeRoceRowsUpserted: number;
+  quarterRowsInFile: number;
+  quarterRowsChanged: number;
+  roeRoceRowsInFile: number;
+  roeRoceRowsChanged: number;
+  companyChanges: CompanyChange[];
+  companyChangesTruncated: boolean;
+  quarterChanges: QuarterChange[];
+  quarterChangesTruncated: boolean;
+  roeRoceChanges: RoeRoceChange[];
+  roeRoceChangesTruncated: boolean;
 };
+
+const FIELD_LABELS: Record<string, string> = {
+  company_name: "Company name",
+  ipo_list_date: "IPO date",
+  isin: "ISIN",
+  industry: "Industry",
+  sector: "Sector",
+  nse_symbol: "NSE symbol",
+  bse_code: "BSE code",
+  bse_52w_high_date: "BSE 52W high date",
+  bse_52w_high_price: "BSE 52W high price",
+  bse_ath_date: "BSE ATH date",
+  bse_ath_price: "BSE ATH price",
+  nse_52w_high_date: "NSE 52W high date",
+  nse_52w_high_price: "NSE 52W high price",
+  nse_ath_date: "NSE ATH date",
+  nse_ath_price: "NSE ATH price",
+  qtr_net_sales: "Net sales",
+  qtr_profit_after_tax: "PAT",
+  qtr_change_in_stocks: "Change in stocks",
+  qtr_cost_of_services_raw_materials: "Cost of services / raw materials",
+  qtr_purchase_of_finished_goods: "Purchase of finished goods",
+  qtr_operating_profit_excl_oi: "Operating profit (excl. OI)",
+  qtr_pbidtm_pct_excl_oi: "PBIDTM % (excl. OI)",
+  shp_date_end: "Shareholding date",
+  shp_institutions_pct: "Institutions %",
+  shp_fii_pct: "FII %",
+  shp_fvci_pct: "FVCI %",
+  shp_fpi_pct: "FPI %",
+  shp_ffi_banks_pct: "FFI/Banks %",
+  shp_foreign_bodies_dr_pct: "Foreign bodies DR %",
+  roe_pct: "ROE %",
+  roce_pct: "ROCE %",
+};
+
+function formatChangeValue(field: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") return value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  if (typeof value === "string" && /date/i.test(field)) return formatDate(value);
+  return String(value);
+}
 
 type Status = "idle" | "uploading" | "done" | "error";
 
@@ -141,10 +196,10 @@ export function DailyUploadForm() {
         )}
 
         <p className="text-xs text-black/50 dark:text-white/50">
-          Updates companies (52-week/all-time highs only move up), replaces the
-          latest quarter&apos;s financials and ROE/ROCE, then schedules a refresh
-          of every all-time-high metric — that refresh runs in the background
-          and can take several minutes to finish on the full dataset.
+          Only writes what actually changed (52-week/all-time highs only move
+          up) and schedules a refresh of every all-time-high metric in the
+          background when needed. If today&apos;s file matches what&apos;s
+          already stored, nothing is written.
         </p>
       </form>
 
@@ -154,13 +209,24 @@ export function DailyUploadForm() {
 
       {status === "done" && summary && (
         <div className="flex flex-col gap-4">
+          {summary.noChanges ? (
+            <p className="text-sm px-3 py-2 rounded-md border border-black/10 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.05]">
+              Today&apos;s upload done — no changes made. This file matches what&apos;s already in the system
+              ({summary.companiesInFile.toLocaleString("en-IN")} companies checked).
+            </p>
+          ) : (
+            <p className="text-sm px-3 py-2 rounded-md border border-black/10 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.05]">
+              Today&apos;s upload done — changes applied below.
+            </p>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Companies in file" value={summary.companiesInFile} />
-            <Stat label="Companies updated" value={summary.companiesUpserted} />
+            <Stat label="Companies checked" value={summary.companiesInFile} />
+            <Stat label="Companies changed" value={summary.companiesChanged} />
             <Stat label="New companies" value={summary.newCompanies} />
             <Stat label="New highs today" value={summary.newHighs.length} />
-            <Stat label="Quarter rows replaced" value={summary.quarterRowsReplaced} />
-            <Stat label="ROE/ROCE rows updated" value={summary.roeRoceRowsUpserted} />
+            <Stat label="Quarter rows changed" value={summary.quarterRowsChanged} />
+            <Stat label="ROE/ROCE rows changed" value={summary.roeRoceRowsChanged} />
           </div>
 
           {summary.newHighs.length > 0 && (
@@ -192,6 +258,34 @@ export function DailyUploadForm() {
               </div>
             </div>
           )}
+
+          <ChangesTable
+            title="Company changes"
+            totalCount={summary.companiesChanged}
+            truncated={summary.companyChangesTruncated}
+            rows={summary.companyChanges.flatMap((c) =>
+              c.changes.map((ch) => ({ key: c.company_name, ...ch }))
+            )}
+          />
+
+          <ChangesTable
+            title="Quarter changes"
+            totalCount={summary.quarterRowsChanged}
+            truncated={summary.quarterChangesTruncated}
+            rows={summary.quarterChanges.flatMap((c) =>
+              c.changes.map((ch) => ({ key: `${c.company_name} (Qtr ending ${formatDate(c.qtr_date_end)})`, ...ch }))
+            )}
+          />
+
+          <ChangesTable
+            title="ROE/ROCE changes"
+            totalCount={summary.roeRoceRowsChanged}
+            truncated={summary.roeRoceChangesTruncated}
+            rows={summary.roeRoceChanges.flatMap((c) =>
+              c.changes.map((ch) => ({ key: `${c.company_name} (FY ending ${formatDate(c.fy_date_end)})`, ...ch }))
+            )}
+          />
+
           <p className="text-xs text-black/50 dark:text-white/50">Updated {formatDate(new Date().toISOString())}</p>
         </div>
       )}
@@ -204,6 +298,54 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div className="border border-black/10 dark:border-white/15 rounded-lg px-3 py-2">
       <p className="text-xs text-black/50 dark:text-white/50">{label}</p>
       <p className="text-lg font-semibold">{value.toLocaleString("en-IN")}</p>
+    </div>
+  );
+}
+
+function ChangesTable({
+  title,
+  totalCount,
+  truncated,
+  rows,
+}: {
+  title: string;
+  totalCount: number;
+  truncated: boolean;
+  rows: { key: string; field: string; from: unknown; to: unknown }[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">
+        {title} ({totalCount.toLocaleString("en-IN")})
+      </h2>
+      <div className="overflow-x-auto border border-black/10 dark:border-white/15 rounded-lg">
+        <table className="w-full text-sm">
+          <thead className="bg-black/5 dark:bg-white/10 text-left">
+            <tr>
+              <th className="px-3 py-2 font-medium">Company</th>
+              <th className="px-3 py-2 font-medium">Field</th>
+              <th className="px-3 py-2 font-medium">From</th>
+              <th className="px-3 py-2 font-medium">To</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t border-black/10 dark:border-white/15">
+                <td className="px-3 py-2">{r.key}</td>
+                <td className="px-3 py-2 text-black/70 dark:text-white/70">{FIELD_LABELS[r.field] ?? r.field}</td>
+                <td className="px-3 py-2 text-black/60 dark:text-white/60">{formatChangeValue(r.field, r.from)}</td>
+                <td className="px-3 py-2">{formatChangeValue(r.field, r.to)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {truncated && (
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Showing the first {rows.length.toLocaleString("en-IN")} field changes — more not shown.
+        </p>
+      )}
     </div>
   );
 }

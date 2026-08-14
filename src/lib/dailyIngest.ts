@@ -3,19 +3,55 @@ import { DailySnapshot } from "@/lib/dailyUpload";
 
 export type NewHigh = { accord_code: number; company_name: string; exchange: "BSE" | "NSE"; kind: "ATH" | "52W"; price: number; previous: number };
 
+export type FieldChange = { field: string; from: unknown; to: unknown };
+export type CompanyChange = { accord_code: number; company_name: string; changes: FieldChange[] };
+export type QuarterChange = { accord_code: number; company_name: string; qtr_date_end: string; changes: FieldChange[] };
+export type RoeRoceChange = { accord_code: number; company_name: string; fy_date_end: string; changes: FieldChange[] };
+
 export type IngestSummary = {
+  noChanges: boolean;
   companiesInFile: number;
-  companiesUpserted: number;
+  companiesChanged: number;
   newCompanies: number;
   newHighs: NewHigh[];
-  quarterRowsReplaced: number;
-  roeRoceRowsUpserted: number;
+  quarterRowsInFile: number;
+  quarterRowsChanged: number;
+  roeRoceRowsInFile: number;
+  roeRoceRowsChanged: number;
+  companyChanges: CompanyChange[];
+  companyChangesTruncated: boolean;
+  quarterChanges: QuarterChange[];
+  quarterChangesTruncated: boolean;
+  roeRoceChanges: RoeRoceChange[];
+  roeRoceChangesTruncated: boolean;
 };
+
+// Cap how many changed entities go into the response — a real data revision
+// (a quarter closing, an annual ROE/ROCE refresh) can touch thousands of
+// rows, and the point of this list is "show me what changed today", not a
+// full audit dump.
+const CHANGE_LIST_CAP = 100;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+// undefined (field absent from the fetched row) and null both mean "no
+// value" for comparison purposes — only a genuine value difference counts.
+function diffFields<T extends Record<string, unknown>>(
+  existing: T | undefined,
+  resolved: T,
+  fields: (keyof T & string)[]
+): FieldChange[] {
+  const changes: FieldChange[] = [];
+  for (const field of fields) {
+    const from = existing?.[field] ?? null;
+    const to = resolved[field] ?? null;
+    if (from !== to) changes.push({ field, from, to });
+  }
+  return changes;
 }
 
 type ExistingCompany = {
@@ -36,6 +72,24 @@ type ExistingCompany = {
   nse_ath_date: string | null;
   nse_ath_price: number | null;
 };
+
+const COMPANY_FIELDS: (keyof ExistingCompany)[] = [
+  "company_name",
+  "ipo_list_date",
+  "isin",
+  "industry",
+  "sector",
+  "nse_symbol",
+  "bse_code",
+  "bse_52w_high_date",
+  "bse_52w_high_price",
+  "bse_ath_date",
+  "bse_ath_price",
+  "nse_52w_high_date",
+  "nse_52w_high_price",
+  "nse_ath_date",
+  "nse_ath_price",
+];
 
 // Only move a peak price up, never down, and only when the incoming file
 // actually carries a value for it — a blank cell shouldn't erase a
@@ -70,6 +124,108 @@ async function fetchExistingCompanies(
   return byCode;
 }
 
+type ExistingQuarterRow = {
+  accord_code: number;
+  qtr_date_end: string;
+  qtr_net_sales: number | null;
+  qtr_profit_after_tax: number | null;
+  qtr_change_in_stocks: number | null;
+  qtr_cost_of_services_raw_materials: number | null;
+  qtr_purchase_of_finished_goods: number | null;
+  qtr_operating_profit_excl_oi: number | null;
+  qtr_pbidtm_pct_excl_oi: number | null;
+  shp_date_end: string | null;
+  shp_institutions_pct: number | null;
+  shp_fii_pct: number | null;
+  shp_fvci_pct: number | null;
+  shp_fpi_pct: number | null;
+  shp_ffi_banks_pct: number | null;
+  shp_foreign_bodies_dr_pct: number | null;
+};
+
+const QUARTER_FIELDS: (keyof ExistingQuarterRow)[] = [
+  "qtr_net_sales",
+  "qtr_profit_after_tax",
+  "qtr_change_in_stocks",
+  "qtr_cost_of_services_raw_materials",
+  "qtr_purchase_of_finished_goods",
+  "qtr_operating_profit_excl_oi",
+  "qtr_pbidtm_pct_excl_oi",
+  "shp_date_end",
+  "shp_institutions_pct",
+  "shp_fii_pct",
+  "shp_fvci_pct",
+  "shp_fpi_pct",
+  "shp_ffi_banks_pct",
+  "shp_foreign_bodies_dr_pct",
+];
+
+function quarterKey(accordCode: number, qtrDateEnd: string): string {
+  return `${accordCode}:${qtrDateEnd}`;
+}
+
+// main_data has no unique key (see the daily_upload_support migration) —
+// historical bulk loads can carry several rows for the same
+// (accord_code, qtr_date_end), e.g. distinct shareholding-pattern
+// snapshots. For "did this quarter's row actually change" purposes we
+// compare against the first one found and treat leftover duplicates at the
+// same key as themselves worth cleaning up (see dupeKeys below).
+//
+// This goes through the get_main_data_for_quarters RPC (an exact pair join
+// server-side) rather than `.in("accord_code", ...).in("qtr_date_end", ...)`
+// — that combination is a cross product, not a pair match, and for a real
+// file matched 40,000+ rows for a single ~300-company batch (every one of
+// those companies' full quarterly history, intersected with every date
+// anyone in the batch reported), which silently truncated at PostgREST's
+// 1000-row cap and made almost everything look new.
+async function fetchExistingQuarters(
+  supabase: SupabaseClient,
+  pairs: { accord_code: number; qtr_date_end: string }[]
+): Promise<{ byKey: Map<string, ExistingQuarterRow>; dupeKeys: Set<string> }> {
+  const byKey = new Map<string, ExistingQuarterRow>();
+  const dupeKeys = new Set<string>();
+
+  for (const batch of chunk(pairs, 1000)) {
+    const { data, error } = await supabase
+      .rpc("get_main_data_for_quarters", { pairs: batch })
+      .range(0, 9999);
+    if (error) throw new Error(`Failed to load existing quarter rows: ${error.message}`);
+    for (const row of (data ?? []) as ExistingQuarterRow[]) {
+      const key = quarterKey(row.accord_code, row.qtr_date_end);
+      if (byKey.has(key)) dupeKeys.add(key);
+      else byKey.set(key, row);
+    }
+  }
+  return { byKey, dupeKeys };
+}
+
+type ExistingRoeRoceRow = { accord_code: number; fy_date_end: string; roe_pct: number | null; roce_pct: number | null };
+
+function roeRoceKey(accordCode: number, fyDateEnd: string): string {
+  return `${accordCode}:${fyDateEnd}`;
+}
+
+// Same exact-pair-join reasoning as fetchExistingQuarters above — a plain
+// `.in(accord_code).in(fy_date_end)` cross product can blow past the
+// 1000-row PostgREST cap once a batch spans several fiscal years.
+async function fetchExistingRoeRoce(
+  supabase: SupabaseClient,
+  pairs: { accord_code: number; fy_date_end: string }[]
+): Promise<Map<string, ExistingRoeRoceRow>> {
+  const byKey = new Map<string, ExistingRoeRoceRow>();
+
+  for (const batch of chunk(pairs, 1000)) {
+    const { data, error } = await supabase
+      .rpc("get_roe_roce_for_pairs", { pairs: batch })
+      .range(0, 9999);
+    if (error) throw new Error(`Failed to load existing ROE/ROCE rows: ${error.message}`);
+    for (const row of (data ?? []) as ExistingRoeRoceRow[]) {
+      byKey.set(roeRoceKey(row.accord_code, row.fy_date_end), row);
+    }
+  }
+  return byKey;
+}
+
 function yyyymmYear(isoDate: string): number {
   return Number(isoDate.slice(0, 4));
 }
@@ -83,14 +239,14 @@ export async function ingestDailySnapshot(
 
   const companiesPayload: Record<string, unknown>[] = [];
   const newHighs: NewHigh[] = [];
+  const companyChanges: CompanyChange[] = [];
+  let companiesChanged = 0;
   let newCompanies = 0;
 
   for (const s of snapshots) {
     const existing = existingByCode.get(s.accord_code);
     const companyName = s.company_name ?? existing?.company_name ?? null;
     if (!companyName) continue; // can't insert/keep a company with no name
-
-    if (!existing) newCompanies++;
 
     const bse52w = ratchet(s.bse_52w_high_price, s.bse_52w_high_date, existing?.bse_52w_high_price ?? null, existing?.bse_52w_high_date ?? null);
     const bseAth = ratchet(s.bse_ath_price, s.bse_ath_date, existing?.bse_ath_price ?? null, existing?.bse_ath_date ?? null);
@@ -102,7 +258,7 @@ export async function ingestDailySnapshot(
     if (nse52w.isNewRecord) newHighs.push({ accord_code: s.accord_code, company_name: companyName, exchange: "NSE", kind: "52W", price: nse52w.price!, previous: existing!.nse_52w_high_price! });
     if (nseAth.isNewRecord) newHighs.push({ accord_code: s.accord_code, company_name: companyName, exchange: "NSE", kind: "ATH", price: nseAth.price!, previous: existing!.nse_ath_price! });
 
-    companiesPayload.push({
+    const resolved: ExistingCompany = {
       accord_code: s.accord_code,
       company_name: companyName,
       ipo_list_date: s.ipo_list_date ?? existing?.ipo_list_date ?? null,
@@ -119,7 +275,17 @@ export async function ingestDailySnapshot(
       nse_52w_high_price: nse52w.price,
       nse_ath_date: nseAth.date,
       nse_ath_price: nseAth.price,
-    });
+    };
+
+    const changes = diffFields(existing, resolved, COMPANY_FIELDS);
+    if (changes.length === 0) continue; // identical to what's already stored — nothing to write
+
+    if (!existing) newCompanies++;
+    companiesChanged++;
+    if (companyChanges.length < CHANGE_LIST_CAP) {
+      companyChanges.push({ accord_code: s.accord_code, company_name: companyName, changes });
+    }
+    companiesPayload.push(resolved);
   }
 
   for (const batch of chunk(companiesPayload, 500)) {
@@ -130,38 +296,80 @@ export async function ingestDailySnapshot(
   // main_data has no per-quarter unique key across its historical bulk
   // load (see the daily_upload_support migration), so replace rows for the
   // exact (accord_code, qtr_date_end) pairs in this file explicitly instead
-  // of relying on ON CONFLICT.
+  // of relying on ON CONFLICT — but only for pairs that actually changed
+  // (or have leftover duplicate rows worth collapsing to one).
   const quarterRows = snapshots.filter((s) => s.qtr_date_end !== null);
+  const quarterChanges: QuarterChange[] = [];
+  let quarterRowsChanged = 0;
+
   if (quarterRows.length > 0) {
-    const pairs = quarterRows.map((s) => ({ accord_code: s.accord_code, qtr_date_end: s.qtr_date_end }));
-    for (const batch of chunk(pairs, 2000)) {
+    const pairs = quarterRows.map((s) => ({ accord_code: s.accord_code, qtr_date_end: s.qtr_date_end! }));
+    const { byKey: existingQuarters, dupeKeys } = await fetchExistingQuarters(supabase, pairs);
+
+    const changedPairs: { accord_code: number; qtr_date_end: string }[] = [];
+    const mainDataPayload: Record<string, unknown>[] = [];
+
+    for (const s of quarterRows) {
+      const key = quarterKey(s.accord_code, s.qtr_date_end!);
+      const existing = existingQuarters.get(key);
+      const companyName = s.company_name ?? existingByCode.get(s.accord_code)?.company_name ?? "";
+
+      const resolved: ExistingQuarterRow = {
+        accord_code: s.accord_code,
+        qtr_date_end: s.qtr_date_end!,
+        qtr_net_sales: s.qtr_net_sales,
+        qtr_profit_after_tax: s.qtr_profit_after_tax,
+        qtr_change_in_stocks: s.qtr_change_in_stocks,
+        qtr_cost_of_services_raw_materials: s.qtr_cost_of_services_raw_materials,
+        qtr_purchase_of_finished_goods: s.qtr_purchase_of_finished_goods,
+        qtr_operating_profit_excl_oi: s.qtr_operating_profit_excl_oi,
+        qtr_pbidtm_pct_excl_oi: s.qtr_pbidtm_pct_excl_oi,
+        shp_date_end: s.shp_date_end,
+        shp_institutions_pct: s.shp_institutions_pct,
+        shp_fii_pct: s.shp_fii_pct,
+        shp_fvci_pct: s.shp_fvci_pct,
+        shp_fpi_pct: s.shp_fpi_pct,
+        shp_ffi_banks_pct: s.shp_ffi_banks_pct,
+        shp_foreign_bodies_dr_pct: s.shp_foreign_bodies_dr_pct,
+      };
+
+      const changes = diffFields(existing, resolved, QUARTER_FIELDS);
+      if (changes.length === 0 && !dupeKeys.has(key)) continue; // identical — leave the stored row alone
+
+      quarterRowsChanged++;
+      if (quarterChanges.length < CHANGE_LIST_CAP && changes.length > 0) {
+        quarterChanges.push({ accord_code: s.accord_code, company_name: companyName, qtr_date_end: s.qtr_date_end!, changes });
+      }
+      changedPairs.push({ accord_code: s.accord_code, qtr_date_end: s.qtr_date_end! });
+      mainDataPayload.push({
+        source_year: yyyymmYear(s.qtr_date_end!),
+        accord_code: s.accord_code,
+        company_name: companyName,
+        isin: s.isin,
+        industry: s.industry,
+        qtr_date_end: s.qtr_date_end,
+        qtr_net_sales: s.qtr_net_sales,
+        qtr_profit_after_tax: s.qtr_profit_after_tax,
+        qtr_change_in_stocks: s.qtr_change_in_stocks,
+        qtr_cost_of_services_raw_materials: s.qtr_cost_of_services_raw_materials,
+        qtr_purchase_of_finished_goods: s.qtr_purchase_of_finished_goods,
+        qtr_operating_profit_excl_oi: s.qtr_operating_profit_excl_oi,
+        qtr_pbidtm_pct_excl_oi: s.qtr_pbidtm_pct_excl_oi,
+        shp_date_end: s.shp_date_end,
+        shp_institutions_pct: s.shp_institutions_pct,
+        shp_fii_pct: s.shp_fii_pct,
+        shp_fvci_pct: s.shp_fvci_pct,
+        shp_fpi_pct: s.shp_fpi_pct,
+        shp_ffi_banks_pct: s.shp_ffi_banks_pct,
+        shp_foreign_bodies_dr_pct: s.shp_foreign_bodies_dr_pct,
+        qtr_basis: null,
+      });
+    }
+
+    for (const batch of chunk(changedPairs, 2000)) {
       const { error } = await supabase.rpc("delete_main_data_for_quarters", { pairs: batch });
       if (error) throw new Error(`Failed to clear existing quarter rows: ${error.message}`);
     }
-
-    const mainDataPayload = quarterRows.map((s) => ({
-      source_year: yyyymmYear(s.qtr_date_end!),
-      accord_code: s.accord_code,
-      company_name: s.company_name ?? existingByCode.get(s.accord_code)?.company_name ?? "",
-      isin: s.isin,
-      industry: s.industry,
-      qtr_date_end: s.qtr_date_end,
-      qtr_net_sales: s.qtr_net_sales,
-      qtr_profit_after_tax: s.qtr_profit_after_tax,
-      qtr_change_in_stocks: s.qtr_change_in_stocks,
-      qtr_cost_of_services_raw_materials: s.qtr_cost_of_services_raw_materials,
-      qtr_purchase_of_finished_goods: s.qtr_purchase_of_finished_goods,
-      qtr_operating_profit_excl_oi: s.qtr_operating_profit_excl_oi,
-      qtr_pbidtm_pct_excl_oi: s.qtr_pbidtm_pct_excl_oi,
-      shp_date_end: s.shp_date_end,
-      shp_institutions_pct: s.shp_institutions_pct,
-      shp_fii_pct: s.shp_fii_pct,
-      shp_fvci_pct: s.shp_fvci_pct,
-      shp_fpi_pct: s.shp_fpi_pct,
-      shp_ffi_banks_pct: s.shp_ffi_banks_pct,
-      shp_foreign_bodies_dr_pct: s.shp_foreign_bodies_dr_pct,
-      qtr_basis: null,
-    }));
     for (const batch of chunk(mainDataPayload, 500)) {
       const { error } = await supabase.from("main_data").insert(batch);
       if (error) throw new Error(`Failed to insert quarter rows: ${error.message}`);
@@ -171,17 +379,39 @@ export async function ingestDailySnapshot(
   const roeRoceRows = snapshots.filter(
     (s) => s.fy_date_end !== null && (s.roe_pct !== null || s.roce_pct !== null)
   );
+  const roeRoceChanges: RoeRoceChange[] = [];
+  let roeRoceRowsChanged = 0;
+
   if (roeRoceRows.length > 0) {
-    const roeRocePayload = roeRoceRows.map((s) => ({
-      accord_code: s.accord_code,
-      company_name: s.company_name ?? existingByCode.get(s.accord_code)?.company_name ?? "",
-      isin: s.isin,
-      industry: s.industry,
-      fy_date_end: s.fy_date_end,
-      roe_pct: s.roe_pct,
-      roce_pct: s.roce_pct,
-      basis: null,
-    }));
+    const pairs = roeRoceRows.map((s) => ({ accord_code: s.accord_code, fy_date_end: s.fy_date_end! }));
+    const existingRoeRoce = await fetchExistingRoeRoce(supabase, pairs);
+    const roeRocePayload: Record<string, unknown>[] = [];
+
+    for (const s of roeRoceRows) {
+      const key = roeRoceKey(s.accord_code, s.fy_date_end!);
+      const existing = existingRoeRoce.get(key);
+      const companyName = s.company_name ?? existingByCode.get(s.accord_code)?.company_name ?? "";
+      const resolved = { accord_code: s.accord_code, fy_date_end: s.fy_date_end!, roe_pct: s.roe_pct, roce_pct: s.roce_pct };
+
+      const changes = diffFields(existing, resolved, ["roe_pct", "roce_pct"]);
+      if (changes.length === 0) continue;
+
+      roeRoceRowsChanged++;
+      if (roeRoceChanges.length < CHANGE_LIST_CAP) {
+        roeRoceChanges.push({ accord_code: s.accord_code, company_name: companyName, fy_date_end: s.fy_date_end!, changes });
+      }
+      roeRocePayload.push({
+        accord_code: s.accord_code,
+        company_name: companyName,
+        isin: s.isin,
+        industry: s.industry,
+        fy_date_end: s.fy_date_end,
+        roe_pct: s.roe_pct,
+        roce_pct: s.roce_pct,
+        basis: null,
+      });
+    }
+
     for (const batch of chunk(roeRocePayload, 500)) {
       const { error } = await supabase
         .from("roe_roce_data")
@@ -190,19 +420,31 @@ export async function ingestDailySnapshot(
     }
   }
 
-  // The refresh itself reliably takes longer than any HTTP gateway timeout
-  // (see the daily_upload_async_refresh migration), so this only schedules
-  // it — the actual REFRESH MATERIALIZED VIEW calls run a few seconds later
-  // inside a pg_cron background job, decoupled from this request.
-  const { error: refreshError } = await supabase.rpc("schedule_daily_metric_peaks_refresh");
-  if (refreshError) throw new Error(`Failed to schedule peak view refresh: ${refreshError.message}`);
+  // Only sales/PAT/EBIDTA/margins/FII/DII/ROE/ROCE peaks are materialized
+  // (see the daily_upload_support migration) — the 52-week/all-time-high
+  // peaks read straight from the live companies table, so they're already
+  // current. Skip scheduling the multi-minute background refresh entirely
+  // when nothing that feeds those materialized views actually changed.
+  if (quarterRowsChanged > 0 || roeRoceRowsChanged > 0) {
+    const { error: refreshError } = await supabase.rpc("schedule_daily_metric_peaks_refresh");
+    if (refreshError) throw new Error(`Failed to schedule peak view refresh: ${refreshError.message}`);
+  }
 
   return {
+    noChanges: companiesChanged === 0 && quarterRowsChanged === 0 && roeRoceRowsChanged === 0,
     companiesInFile: snapshots.length,
-    companiesUpserted: companiesPayload.length,
+    companiesChanged,
     newCompanies,
     newHighs,
-    quarterRowsReplaced: quarterRows.length,
-    roeRoceRowsUpserted: roeRoceRows.length,
+    quarterRowsInFile: quarterRows.length,
+    quarterRowsChanged,
+    roeRoceRowsInFile: roeRoceRows.length,
+    roeRoceRowsChanged,
+    companyChanges,
+    companyChangesTruncated: companiesChanged > companyChanges.length,
+    quarterChanges,
+    quarterChangesTruncated: quarterRowsChanged > quarterChanges.length,
+    roeRoceChanges,
+    roeRoceChangesTruncated: roeRoceRowsChanged > roeRoceChanges.length,
   };
 }

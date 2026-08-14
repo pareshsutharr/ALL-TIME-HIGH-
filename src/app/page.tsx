@@ -40,6 +40,24 @@ function resolveTab(rawTab: string | undefined): Tab {
   return "companies";
 }
 
+// The home page fires several Supabase calls at once via Promise.all — a
+// transient failure in any single one (a cold connection, a momentary
+// pooler hiccup) would otherwise reject the whole batch and crash the page
+// for everyone. Fall back to an empty/zero result per call instead, so one
+// flaky query degrades that one number instead of taking down the page.
+function safe<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return promise.catch((err) => {
+    console.error("Home page data fetch failed, falling back:", err);
+    return fallback;
+  });
+}
+
+function safeMaybe<T>(promise: Promise<T> | null, fallback: T): Promise<T> | null {
+  return promise === null ? null : safe(promise, fallback);
+}
+
+const EMPTY_LIST = { rows: [], count: 0 };
+
 export default async function Home({
   searchParams,
 }: {
@@ -68,15 +86,15 @@ export default async function Home({
     mainDataCount,
     athCount,
   ] = await Promise.all([
-    tab === "companies" ? getCompanies(listParams) : null,
-    tab === "sme" ? getSmeCompanies(listParams) : null,
-    tab === "main" ? getMainData({ ...listParams, year }) : null,
-    tab === "ath" ? getCompanyAth({ q, page, metric }) : null,
-    industriesTable ? getIndustries(industriesTable) : Promise.resolve([]),
-    getTableCount("companies"),
-    getTableCount("sme_companies"),
-    getTableCount("main_data"),
-    getTableCount("companies_ath"),
+    safeMaybe(tab === "companies" ? getCompanies(listParams) : null, EMPTY_LIST),
+    safeMaybe(tab === "sme" ? getSmeCompanies(listParams) : null, EMPTY_LIST),
+    safeMaybe(tab === "main" ? getMainData({ ...listParams, year }) : null, EMPTY_LIST),
+    safeMaybe(tab === "ath" ? getCompanyAth({ q, page, metric }) : null, EMPTY_LIST),
+    safe(industriesTable ? getIndustries(industriesTable) : Promise.resolve([]), []),
+    safe(getTableCount("companies"), 0),
+    safe(getTableCount("sme_companies"), 0),
+    safe(getTableCount("main_data"), 0),
+    safe(getTableCount("companies_ath"), 0),
   ]);
 
   const activeResult = companiesResult ?? smeResult ?? mainResult ?? athResult!;

@@ -165,6 +165,12 @@ export default async function Home({
       )}
 
       <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+
+      <footer className="mt-2 pt-4 border-t border-black/10 dark:border-white/15">
+        <Link href="/admin" className="text-xs text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70">
+          Admin: daily data update →
+        </Link>
+      </footer>
     </div>
   );
 }

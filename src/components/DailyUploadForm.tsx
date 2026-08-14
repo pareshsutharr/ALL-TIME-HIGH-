@@ -3,6 +3,15 @@
 import { useRef, useState } from "react";
 import { formatDate, formatPrice } from "@/lib/format";
 
+// The file itself transfers almost instantly (a few MB at most) — the real
+// wait is the server processing ~7,750 companies, which has no native
+// progress signal over a plain XHR response. So the bar is two phases: real
+// byte progress while the request body is sending (0-15%), then an
+// ease-out crawl toward 90% while waiting for the response, snapping to
+// 100% only once the response actually arrives.
+const UPLOAD_PHASE_WEIGHT = 15;
+const PROCESSING_CEILING = 90;
+
 type NewHigh = {
   accord_code: number;
   company_name: string;
@@ -29,8 +38,10 @@ export function DailyUploadForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<IngestSummary | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState<"uploading" | "processing">("uploading");
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const file = fileInputRef.current?.files?.[0];
     if (!file) return;
@@ -38,20 +49,60 @@ export function DailyUploadForm() {
     setStatus("uploading");
     setError(null);
     setSummary(null);
+    setProgress(0);
+    setPhase("uploading");
 
     const formData = new FormData();
     formData.append("file", file);
 
-    try {
-      const res = await fetch("/api/admin/upload-daily", { method: "POST", body: formData });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "Upload failed");
-      setSummary(body.summary as IngestSummary);
+    let crawlInterval: ReturnType<typeof setInterval> | undefined;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/admin/upload-daily");
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      setProgress((event.loaded / event.total) * UPLOAD_PHASE_WEIGHT);
+    };
+
+    xhr.upload.onload = () => {
+      setPhase("processing");
+      setProgress(UPLOAD_PHASE_WEIGHT);
+      // Ease toward (but never reach) the ceiling — ~90% of the remaining
+      // gap closes every tick, so it slows down the longer processing runs
+      // rather than stalling dead at a fixed number.
+      crawlInterval = setInterval(() => {
+        setProgress((p) => p + (PROCESSING_CEILING - p) * 0.05);
+      }, 300);
+    };
+
+    xhr.onload = () => {
+      if (crawlInterval) clearInterval(crawlInterval);
+      let body: { summary?: IngestSummary; error?: string };
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        setError("Upload failed: could not read server response");
+        setStatus("error");
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        setError(body.error || "Upload failed");
+        setStatus("error");
+        return;
+      }
+      setProgress(100);
+      setSummary(body.summary!);
       setStatus("done");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+    };
+
+    xhr.onerror = () => {
+      if (crawlInterval) clearInterval(crawlInterval);
+      setError("Upload failed: network error");
       setStatus("error");
-    }
+    };
+
+    xhr.send(formData);
   }
 
   return (
@@ -74,6 +125,21 @@ export function DailyUploadForm() {
         >
           {status === "uploading" ? "Updating…" : "Upload & update"}
         </button>
+
+        {status === "uploading" && (
+          <div className="flex flex-col gap-1.5">
+            <div className="h-2 rounded-full bg-black/10 dark:bg-white/15 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-black dark:bg-white transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.min(progress, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-black/50 dark:text-white/50">
+              {phase === "uploading" ? "Uploading file…" : "Updating companies, quarters, and ROE/ROCE…"}
+            </p>
+          </div>
+        )}
+
         <p className="text-xs text-black/50 dark:text-white/50">
           Updates companies (52-week/all-time highs only move up), replaces the
           latest quarter&apos;s financials and ROE/ROCE, then schedules a refresh
